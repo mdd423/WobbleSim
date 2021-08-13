@@ -31,6 +31,12 @@ if __name__ == '__main__':
     parser.add_argument('--gamma',action='store',default=1.0,type=np.float32)
     parser.add_argument('--s2n',action='store',default=20,type=np.float32)
     parser.add_argument('--epoches',action='store',default=5,type=int)
+
+    parser.add_argument('--stellarname_wave',action='store',default='data/stellar/WAVE_PHOENIX-ACES-AGSS-COND-2011.fits',type=str)
+    parser.add_argument('--stellarname_flux',action='store',default='data/stellar/PHOENIX/lte02400-0.50-4.0.PHOENIX-ACES-AGSS-COND-2011-HiRes.fits',type=str)
+    parser.add_argument('--skycalcname',action='store',default='data/tellurics/skycalc/skycalc_defaults.txt',type=str)
+    parser.add_argument('--skycalcalma',action='store',default='data/tellurics/skycalc/almanac_example.txt',type=str)
+    parser.add_argument('--gascellname',action='store',default='data/gascell/keck_fts_renorm.idl',type=str)
     args   = parser.parse_args()
 
 
@@ -39,7 +45,10 @@ if __name__ == '__main__':
                         ,args.vp,args.epsilon,args.gamma,args.w)
     out = simulator.main(args.lr
                         ,args.s2n,args.epoches
-                        ,args.vp,args.epsilon,args.gamma,args.w)
+                        ,args.vp,args.epsilon,args.gamma,args.w
+                        ,args.stellarname_flux,args.stellarname_flux
+                        ,args.skycalcname,args.skycalcalma
+                        ,args.gascellname)
 
     hf = h5py.File(out_name,"w")
     theory_group = hf.create_group("theory")

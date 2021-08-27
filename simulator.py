@@ -1,37 +1,42 @@
 import numpy as np
 import numpy.random as random
+
 import sys
 import h5py
 
 import scipy.ndimage as img
 import scipy.interpolate as interp
+import scipy.io
 
 import astropy.units as u
 import astropy.constants as const
 import astropy.table as at
 import astropy.io
-import scipy.io
-import io
 
 import data.tellurics.skycalc.skycalc as skycalc
 import data.tellurics.skycalc.skycalc_cli as sky_cli
+
 import json
 import requests
+import io
 
-def lanczos_interpolation(x,xs,ys,a=4):
-    # x = x * u.radian
+def lanczos_interpolation(x,xs,ys,dx,a=4):
     y = np.zeros(x.shape)
     for i,x_value in enumerate(x):
-        samples = np.arange(np.floor(x_value) - a + 1,np.floor(x_value) + a,dtype=int)
-        for j,sample in enumerate(samples):
-            y[i] += ys[j] * lanczos_kernel(x_value - j,a)
+        # which is basically the same as sample=x[j-a+1] to x[j+a]
+        # where j in this case is the nearest index xs_j to x_value
+        sample_min,sample_max = max(0,x_value//dx - a + 1),min(xs.shape[0],x_value//dx + a)
+
+        samples = np.arange(sample_min,sample_max,dtype=int)
+        for sample in samples:
+            y[i] += ys[sample] * lanczos_kernel(x_value - xs[sample],a)
     return y
 
 def lanczos_kernel(x,a):
     if x == 0:
         return 1
     if x > -a and x < a:
-        return a*np.sinc(np.pi*u.radian*x) * np.sinc(np.pi*u.radian*x/a)/(np.pi**2 * x**2)
+        return a*np.sin(np.pi*u.radian*x) * np.sin(np.pi*u.radian*x/a)/(np.pi**2 * x**2)
     return 0
 
 def same_dist_elems(arr):
@@ -41,7 +46,7 @@ def same_dist_elems(arr):
             return False
     return True
 
-def main(low_resolution,s2n,epoches,vp,epsilon,gamma,w):
+def main(low_resolution,s2n,epoches,vp,epsilon,gamma,w,stellarname_wave,stellarname_flux,skycalcname,skycalcalma,gascellname,a):
     generate_data = False
 
     # Read In Files And Simulate
@@ -51,21 +56,21 @@ def main(low_resolution,s2n,epoches,vp,epsilon,gamma,w):
     lamb_max = 6300
     xmin = np.log(lamb_min)
     xmax = np.log(lamb_max)
-    flux_stellar, lamb_stellar, deltas = read_in_stellar('data/stellar/WAVE_PHOENIX-ACES-AGSS-COND-2011.fits',
-                                                         'data/stellar/PHOENIX/lte02400-0.50-4.0.PHOENIX-ACES-AGSS-COND-2011-HiRes.fits',
+    flux_stellar, lamb_stellar, deltas = read_in_stellar(stellarname_wave,
+                                                         stellarname_flux,
                                                          lamb_min,lamb_max,epoches)
 
     # lambda here is in nanometers
     try:
-        trans_tellurics, lamb_tellurics, airmass = simulate_tellurics(inputFilename='data/tellurics/skycalc/skycalc_defaults.txt',
-                                                                        almFilename='data/tellurics/skycalc/almanac_example.txt',
+        trans_tellurics, lamb_tellurics, airmass = simulate_tellurics(inputFilename=skycalcname,
+                                                                        almFilename=skycalcalma,
                                                                         epoches=epoches)
     except requests.exceptions.ConnectionError:
         trans_tellurics, lamb_tellurics, airmass = read_in_tellurics('data/tellurics/skycalc/output.txt')
         epochs = 1
         print('skycalc needs network connection...\n using local file')
     # lambda is in nanometers here as well
-    trans_gas, lamb_gas = read_in_gas_cell(filename='data/gascell/keck_fts_renorm.idl')
+    trans_gas, lamb_gas = read_in_gas_cell(filename=gascellname)
 
     lamb_tellurics *= u.nm
     lamb_gas       *= u.Angstrom
@@ -74,15 +79,14 @@ def main(low_resolution,s2n,epoches,vp,epsilon,gamma,w):
     x_s = np.log(lamb_stellar/u.Angstrom)
     x_t = np.log(lamb_tellurics/u.Angstrom)
     x_g = np.log(lamb_gas/u.Angstrom)
-    median_diff = min([get_median_difference(x) for x in [x_s,x_t[0],x_g]])
+    
+    temp = [get_median_difference(x) for x in [x_s,x_t[0],x_g]]
+    median_diff = min(temp)
 
-    # print(same_dist_elems(x_t[0,:]),same_dist_elems(x_s[:]),same_dist_elems(x_g))
-    # sys.exit()
-
-    xs = np.arange(np.log(lamb_min),np.log(lamb_max),step=median_diff)
-    f_s   = np.empty((epoches,xs.shape[0]))
-    f_t   = np.empty((epoches,xs.shape[0]))
-    f_g   = interpolate(xs,x_g,trans_gas)
+    xs  = np.arange(np.log(lamb_min),np.log(lamb_max),step=median_diff)
+    f_s = np.empty((epoches,xs.shape[0]))
+    f_t = np.empty((epoches,xs.shape[0]))
+    f_g = interpolate(xs,x_g,trans_gas)
 
     f_sum = np.empty((epoches,xs.shape[0]))
     for i in range(epoches):
@@ -115,7 +119,7 @@ def main(low_resolution,s2n,epoches,vp,epsilon,gamma,w):
     ################################################
     g_l = np.linspace(-2,2,5)
     g_l = gauss_func(g_l,mu=0.0,sigma=1.0)
-    g_l = g_l/np.linalg.norm(g_l,ord=1)
+    g_l /= np.linalg.norm(g_l,ord=1)
     f_tot = np.apply_along_axis(img.convolve,0,f_sum,g_l) # convolve just tell star and gas
 
     # Generate dataset grid & jitter & stretch
@@ -131,7 +135,7 @@ def main(low_resolution,s2n,epoches,vp,epsilon,gamma,w):
     f_ds  = np.empty(x_hat.shape)
     noise = np.empty(x_hat.shape)
     for i in range(f_ds.shape[0]):
-        f_ds[i,:] = interpolate(x_hat[i,:],xs,f_tot[i,:])
+        f_ds[i,:] = lanczos_interpolation(x_hat[i,:],xs,f_tot[i,:],dx=median_diff,a=a)
         for j in range(f_ds.shape[1]):
             f_ds[i,j] *= random.normal(1,1./s2n[i,j])
 

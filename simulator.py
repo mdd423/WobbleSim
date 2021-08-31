@@ -1,98 +1,297 @@
 import numpy as np
-import matplotlib.pyplot as plt
+import numpy.random as random
+
+import sys
+import h5py
+
 import scipy.ndimage as img
+import scipy.interpolate as interp
+import scipy.io
 
 import astropy.units as u
 import astropy.constants as const
-import numpy.random as random
+import astropy.table as at
+import astropy.io
 
-import scipy.interpolate as interp
+import data.tellurics.skycalc.skycalc as skycalc
+import data.tellurics.skycalc.skycalc_cli as sky_cli
 
-import argparse
-parser = argparse.ArgumentParser()
-parser.add_argument('--hr',action='store',default=100000,type=np.float32)
-parser.add_argument('--lr',action='store',default=20000,type=np.float32)
-parser.add_argument('--gn',action='store',default=10,type=np.int)
-parser.add_argument('--sn',action='store',default=10,type=int)
-parser.add_argument('--tn',action='store',default=10,type=int)
-parser.add_argument('--xmin',action='store',default=9.53,type=np.float32)
-parser.add_argument('--xmax',action='store',default=9.82,type=np.float32)
-parser.add_argument('--ymin',action='store',default=0.0,type=np.float32)
-parser.add_argument('--ymax',action='store',default=0.9,type=np.float32)
-parser.add_argument('--vp',action='store',default=30*u.km/u.s,type=np.float32)
-parser.add_argument('--w',action='store',default=1.0,type=np.float32)
-parser.add_argument('--epsilon',action='store',default=0.0001,type=np.float32)
-parser.add_argument('--gamma',action='store',default=0.001,type=np.float32)
-parser.add_argument('--s2n',action='store',default=100,type=np.float32)
-parser.add_argument('--epoches',action='store',default=30,type=int)
-args   = parser.parse_args()
+import json
+import requests
+import io
 
-def main():
-    high_resolution = args.hr
-    high_spacing = spacing_from_res(high_resolution)
-    xmin = args.xmin
-    xmax = args.xmax
-    xs = np.arange(xmin,xmax,step=high_spacing)
-    s2n = args.s2n
-    epoches = args.epoches
-    low_resolution = args.hr
-    line_width = spacing_from_res(low_resolution)
+def main(low_resolution,s2n,epoches,vp,epsilon,gamma,w,stellarname_wave,stellarname_flux,skycalcname,skycalcalma,gascellname,a):
+    generate_data = False
 
-    # Generate Theoretical Y values
+    # Read In Files And Simulate
     #################################################
-    y_star,deltas  = generate_stellar(args.sn,epoches,xs,line_width,args.ymin,args.ymax,args.vp)
-    y_tell,airmass = generate_tellurics(args.tn,epoches,xs,line_width,args.ymin,args.ymax)
-    y_gas          = generate_gas_cell(args.gn,epoches,xs,line_width,args.ymin,args.ymax)
+    # lambda is in Angstroms here
+    lamb_min = 5000
+    lamb_max = 6300
+    xmin = np.log(lamb_min)
+    xmax = np.log(lamb_max)
+    flux_stellar, lamb_stellar, deltas = read_in_stellar(stellarname_wave,
+                                                         stellarname_flux,
+                                                         lamb_min,lamb_max,epoches)
 
-    y_sum = y_star + y_tell + y_gas
-    f_sum = np.exp(y_sum)
+    # lambda here is in nanometers
+    try:
+        trans_tellurics, lamb_tellurics, airmass = simulate_tellurics(inputFilename=skycalcname,
+                                                                        almFilename=skycalcalma,
+                                                                        epoches=epoches)
+    except requests.exceptions.ConnectionError:
+        trans_tellurics, lamb_tellurics, airmass = read_in_tellurics('data/tellurics/skycalc/output.txt')
+        epochs = 1
+        print('skycalc needs network connection...\n using local file')
+    # lambda is in nanometers here as well
+    trans_gas, lamb_gas = read_in_gas_cell(filename=gascellname)
+
+    lamb_tellurics *= u.nm
+    lamb_gas       *= u.Angstrom
+    lamb_stellar   *= u.Angstrom
+
+    x_s = np.log(lamb_stellar/u.Angstrom)
+    x_t = np.log(lamb_tellurics/u.Angstrom)
+    x_g = np.log(lamb_gas/u.Angstrom)
+
+    temp = [get_median_difference(x) for x in [x_s,x_t[0],x_g]]
+    median_diff = min(temp)
+
+    xs  = np.arange(np.log(lamb_min),np.log(lamb_max),step=median_diff)
+    f_s = np.empty((epoches,xs.shape[0]))
+    f_t = np.empty((epoches,xs.shape[0]))
+    f_g = interpolate(xs,x_g,trans_gas)
+
+    f_sum = np.empty((epoches,xs.shape[0]))
+    for i in range(epoches):
+        f_s[i,:]   = interpolate(xs + deltas[i],x_s,     flux_stellar)
+        f_t[i,:]   = interpolate(xs,x_t[i,:],trans_tellurics[i])
+        f_sum[i,:] = f_s[i,:] * f_t[i,:] * f_g
+
+    # now take lambda grids from all of these and make a new one with
+    # spacing equal to the minimum median spacing of the above grids
+    # then using lanczos 5 interpolation interpolate all values onto new grids
+    # then multiply element wise for combined theoretical spectrum
+
+    if generate_data:
+        # Initialize constants
+        #################################################
+        high_spacing = spacing_from_res(high_resolution)
+        xs           = np.arange(xmin,xmax,step=high_spacing)
+        line_width   = spacing_from_res(low_resolution)
+
+        # Generate Theoretical Y values
+        #################################################
+        y_star,deltas  = generate_stellar(  sn,epoches,xs,line_width,ymin,ymax,vp*u.km/u.s)
+        y_tell,airmass = generate_tellurics(tn,epoches,xs,line_width,ymin,ymax)
+        y_gas ,mu_g    = generate_gas_cell( gn,epoches,xs,line_width,ymin,ymax)
+
+        y_sum = y_star + y_tell + y_gas
+        f_sum = np.exp(y_sum)
 
     # Convolve with Telescope PSF
     ################################################
-
-    g_l = np.linspace(-2,2,5)
-    g_l = gauss_func(g_l,mu=0.0,sigma=1.0)
-    g_l = [0.25,0.5,0.25]
+    g_l = np.arange(-3.0/low_resolution,3.0/low_resolution,step=median_diff)
+    g_l = gauss_func(g_l,mu=0.0,sigma=1.0/low_resolution)
+    g_l /= np.linalg.norm(g_l,ord=1)
     f_tot = np.apply_along_axis(img.convolve,0,f_sum,g_l) # convolve just tell star and gas
-
-    # Interpolate Spline
-    ##################################################
-    spline = []
-    for i in range(epoches):
-        spline.append(interp.CubicSpline(xs,f_tot[i,:]))
 
     # Generate dataset grid & jitter & stretch
     ##################################################
-    x       = np.arange(xmin,xmax,step=spacing_from_res(low_resolution))
+    x   = np.arange(xmin,xmax,step=spacing_from_res(low_resolution))
     nlr = x.shape[0]
-    x_hat, delt = jitter(x,epoches,args.w)
-    x_hat, m    = stretch(x,epoches,args.epsilon)
-    # x_hat = x
+    x_hat, m    = stretch(x,epoches,epsilon)
+    x_hat, delt = jitter(x,epoches,w)
 
-    f_ds = np.empty((epoches,nlr))
-    for i in range(epoches):
-        f_ds[i,:]= spline[i](x_hat[i,:])
+    # Interpolate Spline and Add Noise
+    ##################################################
+    s2n   = get_s2n(x_hat.shape,s2n)
+    f_ds  = np.empty(x_hat.shape)
+    noise = np.empty(x_hat.shape)
+    for i in range(f_ds.shape[0]):
+        f_ds[i,:] = lanczos_interpolation(x_hat[i,:],xs,f_tot[i,:],dx=median_diff,a=a)
+        for j in range(f_ds.shape[1]):
+            f_ds[i,j] *= random.normal(1,1./s2n[i,j])
 
-    # Add noise
+    # Get Error Bars
     ###################################################
-    noise = random.normal(1,1./s2n,size=f_ds.shape)
-    f_out = f_ds * noise
-    ferr_out = generate_errors(f_ds,args.gamma)
-    lmb_out = np.exp(x)
+    ferr_out = generate_errors(f_ds,s2n,gamma)
+    lmb_out  = np.exp(x)
 
-    # Plot an epoch
-    ####################################################
-    epoch_idx = 17
-    plt.figure(figsize=(20,8))
-    plt.title('wobble toy data')
-    plt.xlabel('$\lambda_{%i}$' % epoch_idx)
-    plt.ylabel('$f_{%i}$' % epoch_idx)
-    plt.plot(np.exp(xs),np.exp(y_star[epoch_idx,:]),'red',alpha=0.5,label='star')
-    plt.plot(np.exp(xs),np.exp(y_tell[epoch_idx,:]),'blue',alpha=0.5,label='telluric')
-    plt.plot(np.exp(xs),np.exp(y_gas[epoch_idx,:]),'green',alpha=0.5,label='gas cell')
-    plt.errorbar(lmb_out,f_out[epoch_idx,:],ferr_out[epoch_idx,:],fmt='.k',elinewidth=0.7,zorder=1,alpha=0.5,ms=6,label='data')
-    plt.legend()
-    plt.show()
+    # Pack Output into Dictionary
+    ###################################################
+    out = {"wavelength_sample":lmb_out,
+            "flux":f_ds,
+            "flux_error":ferr_out,
+            "wavelength_theory":np.exp(xs),
+            "flux_tellurics":f_t,
+            "flux_stellar":f_s,
+            "flux_gas":f_g,
+            "del":delt,
+            "m":m,
+            "airmass":airmass,
+            "delta":deltas}
+
+    return out
+
+def lanczos_interpolation(x,xs,ys,dx,a=4):
+    x0 = xs[0]
+    y = np.zeros(x.shape)
+    for i,x_value in enumerate(x):
+        # which is basically the same as sample=x[j-a+1] to x[j+a]
+        # where j in this case is the nearest index xs_j to x_value
+#         print("value: ", x_value)
+#         print("closest: ",xs[int((x_value-x0)//dx)])
+#         print,x_value)
+        sample_min,sample_max = max(0,abs(x_value-x0)//dx - a + 1),min(xs.shape[0],abs(x_value-x0)//dx + a)
+
+        samples = np.arange(sample_min,sample_max,dtype=int)
+#         print(sample_min,sample_max)
+        for sample in samples:
+            y[i] += ys[sample] * lanczos_kernel((x_value - xs[sample])/dx,a)
+    return y
+
+def lanczos_kernel(x,a):
+    if x == 0:
+        return 1
+    if x > -a and x < a:
+        return a*np.sin(np.pi*u.radian*x) * np.sin(np.pi*u.radian*x/a)/(np.pi**2 * x**2)
+    return 0
+
+def same_dist_elems(arr):
+    diff = arr[1] - arr[0]
+    for x in range(1, len(arr) - 1):
+        if arr[x + 1] - arr[x] != diff:
+            return False
+    return True
+
+def get_skycalc_defaults(inputFilename,almFilename,isVerbose=False):
+    dic = {}
+
+    # Query the Almanac if alm option is enabled
+    if almFilename:
+
+        # Read the input parameters
+        inputalmdic = None
+        try:
+            with open(almFilename, 'r') as f:
+                inputalmdic = json.load(f)
+        except ValueError:
+            with open(almFilename, 'r') as f:
+                inputalmdic = sky_cli.loadTxt(f)
+
+        if not inputalmdic:
+            raise ValueError('Error: cannot read' + almFilename)
+
+        alm = skycalc.AlmanacQuery(inputalmdic)
+        dic = alm.query()
+
+    if isVerbose:
+        print('Data retrieved from the Almanac:')
+        for key, value in dic.items():
+            print('\t' + str(key) + ': ' + str(value))
+
+    if inputFilename:
+
+        # Read input parameters
+        inputdic = None
+        try:
+            with open(inputFilename, 'r') as f:
+                inputdic = json.load(f)
+        except ValueError:
+            with open(inputFilename, 'r') as f:
+                inputdic = sky_cli.loadTxt(f)
+
+        if not inputdic:
+            raise ValueError('Error: cannot read ' + inputFilename)
+
+        # Override input parameters
+        if isVerbose:
+            print('Data overridden by the user\'s input file:')
+        for key, value in inputdic.items():
+            if isVerbose and key in dic:
+                print('\t' + str(key) + ': ' + str(value))
+            dic[key] = value
+
+    # Fix the observatory to fit the backend
+    try:
+        dic = sky_cli.fixObservatory(dic)
+    except ValueError:
+        raise
+
+    if isVerbose:
+        print('Data submitted to SkyCalc:')
+        for key, value in dic.items():
+            print('\t' + str(key) + ': ' + str(value))
+
+    return dic
+
+def sample_deltas(epoches,vel_width=30*u.km/u.s):
+    deltas  = np.array(shifts((2*random.rand(epoches)-1)*vel_width))
+    return deltas
+
+def read_in_stellar(wavefile,fluxfile,lamb_min,lamb_max,epoches,vel_width=30*u.km/u.s):
+    deltas = sample_deltas(epoches,vel_width)
+    lambdas_all = astropy.io.fits.open(wavefile)['PRIMARY'].data
+    flux_all    = astropy.io.fits.open(fluxfile)['PRIMARY'].data
+    return flux_all, lambdas_all, deltas
+
+def sample_airmass(epoches):
+    airmass = (2 * random.rand(epoches)) + 1
+    return airmass
+
+def simulate_tellurics(inputFilename,almFilename,epoches):
+    airmass = sample_airmass(epoches)
+    dic     = get_skycalc_defaults(inputFilename,almFilename)
+    lambda_grid       = []
+    transmission_grid = []
+    for a in airmass:
+        dic['airmass'] = a
+        skyModel = skycalc.SkyModel()
+        skyModel.callwith(dic)
+
+        data = skyModel.getdata()
+        data = io.BytesIO(data)
+        hdu = at.Table.read(data)
+        transmission_grid.append(hdu['trans'].data)
+        lambda_grid.append(hdu['lam'].data)
+    return np.array(transmission_grid), np.array(lambda_grid), np.array(airmass)
+
+def read_in_tellurics(filename):
+    hdu = astropy.io.fits.open(filename)
+    print(hdu)
+    prim = hdu['PRIMARY'].header.keys
+    print(prim)
+    sys.exit()
+    prim = at.Table.read(hdu['PRIMARY'])
+    print(prim.info())
+    tbl  = at.Table.read(hdu[1])
+
+    sys.exit()
+    trans_grid = np.array(tbl['trans'].data)
+    lamb_grid  = np.array(tbl['lam'].data)
+    airmass = np.array(prim['airmass'].data)
+
+    trans_grid = np.expand_dims(trans_grid,0)
+    lamb_grid  = np.expand_dims(lamb_grid,0)
+    return trans_grid, lamb_grid, airmass
+
+def read_in_gas_cell(filename='data/gascell/keck_fts_renorm.idl'):
+    array = scipy.io.readsav(filename)
+    transmission = array['siod']
+    wavelength   = array['wiod']
+    return transmission, wavelength
+
+def get_median_difference(x):
+
+    return np.median([t - s for s, t in zip(x, x[1:])])
+
+def interpolate(x,xs,ys):
+    spline = interp.CubicSpline(xs,ys)
+    return spline(x)
+
+def get_s2n(shape,constant):
+    return np.ones(shape) * constant
 
 def zplusone(vel):
     return np.sqrt((1 + vel/(const.c))/(1 - vel/(const.c)))
@@ -104,20 +303,22 @@ def average_difference(x):
     return np.mean([t - s for s, t in zip(x, x[1:])])
 
 def jitter(x,epoches,w=1.0):
-    if len(x.shape) == 1:
-        x = np.expand_dims(x,axis=0)
-        x = np.repeat(x,repeats=epoches,axis=0)
-    width = average_difference(x[0,:])
+    out = x
+    if len(out.shape) == 1:
+        out = np.expand_dims(out,axis=0)
+        out = np.repeat(out,repeats=epoches,axis=0)
+
+    width = average_difference(out[0,:])
     jitter = (2*random.rand(epoches) - 1) * width * w
     for i,delt in enumerate(jitter):
-        x[i,:] += delt
-    return x,jitter
+        out[i,:] += delt
+    return out,jitter
 
 def stretch(x,epoches,epsilon=0.01):
     if len(x.shape) == 1:
         x = np.expand_dims(x,axis=0)
         x = np.repeat(x,repeats=epoches,axis=0)
-    m = (epsilon * (random.rand(epoches) - 0.5)) + 1
+    m = (epsilon * (2*random.rand(epoches) - 1)) + 1
     for i,ms in enumerate(m):
         x[i,:] *= ms
     return x,m
@@ -161,14 +362,16 @@ def generate_gas_cell(n_lines,epoches,x,line_width,y_min=0.0,y_max=0.7):
     for i in range(epoches):
         for j in range(n_lines):
             y[i,:] -= heights[j] * gauss_func(x,mus[j],line_width)
-    return y
+    return y, mus
 
-def generate_errors(f,w=0.1):
+def generate_errors(f,s2n,gamma=1.0):
+    xs,ys = np.where(f < 0)
+    for x,y in zip(xs,ys):
+        f[x,y] = 0
     f_err = np.empty(f.shape)
     for i in range(f_err.shape[0]):
         for j in range(f_err.shape[1]):
-            f_err[i,j] = random.normal(scale=np.sqrt(w*f[i,j]))
+            error = random.normal(scale=f[i,j]/s2n[i,j] * gamma)
+            # print(error)
+            f_err[i,j] = error
     return f_err
-
-if __name__ == '__main__':
-    main()

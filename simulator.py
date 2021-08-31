@@ -20,32 +20,6 @@ import json
 import requests
 import io
 
-def lanczos_interpolation(x,xs,ys,dx,a=4):
-    y = np.zeros(x.shape)
-    for i,x_value in enumerate(x):
-        # which is basically the same as sample=x[j-a+1] to x[j+a]
-        # where j in this case is the nearest index xs_j to x_value
-        sample_min,sample_max = max(0,x_value//dx - a + 1),min(xs.shape[0],x_value//dx + a)
-
-        samples = np.arange(sample_min,sample_max,dtype=int)
-        for sample in samples:
-            y[i] += ys[sample] * lanczos_kernel(x_value - xs[sample],a)
-    return y
-
-def lanczos_kernel(x,a):
-    if x == 0:
-        return 1
-    if x > -a and x < a:
-        return a*np.sin(np.pi*u.radian*x) * np.sin(np.pi*u.radian*x/a)/(np.pi**2 * x**2)
-    return 0
-
-def same_dist_elems(arr):
-    diff = arr[1] - arr[0]
-    for x in range(1, len(arr) - 1):
-        if arr[x + 1] - arr[x] != diff:
-            return False
-    return True
-
 def main(low_resolution,s2n,epoches,vp,epsilon,gamma,w,stellarname_wave,stellarname_flux,skycalcname,skycalcalma,gascellname,a):
     generate_data = False
 
@@ -79,7 +53,7 @@ def main(low_resolution,s2n,epoches,vp,epsilon,gamma,w,stellarname_wave,stellarn
     x_s = np.log(lamb_stellar/u.Angstrom)
     x_t = np.log(lamb_tellurics/u.Angstrom)
     x_g = np.log(lamb_gas/u.Angstrom)
-    
+
     temp = [get_median_difference(x) for x in [x_s,x_t[0],x_g]]
     median_diff = min(temp)
 
@@ -117,8 +91,8 @@ def main(low_resolution,s2n,epoches,vp,epsilon,gamma,w,stellarname_wave,stellarn
 
     # Convolve with Telescope PSF
     ################################################
-    g_l = np.linspace(-2,2,5)
-    g_l = gauss_func(g_l,mu=0.0,sigma=1.0)
+    g_l = np.arange(-3.0/low_resolution,3.0/low_resolution,step=median_diff)
+    g_l = gauss_func(g_l,mu=0.0,sigma=1.0/low_resolution)
     g_l /= np.linalg.norm(g_l,ord=1)
     f_tot = np.apply_along_axis(img.convolve,0,f_sum,g_l) # convolve just tell star and gas
 
@@ -159,6 +133,37 @@ def main(low_resolution,s2n,epoches,vp,epsilon,gamma,w,stellarname_wave,stellarn
             "delta":deltas}
 
     return out
+
+def lanczos_interpolation(x,xs,ys,dx,a=4):
+    x0 = xs[0]
+    y = np.zeros(x.shape)
+    for i,x_value in enumerate(x):
+        # which is basically the same as sample=x[j-a+1] to x[j+a]
+        # where j in this case is the nearest index xs_j to x_value
+#         print("value: ", x_value)
+#         print("closest: ",xs[int((x_value-x0)//dx)])
+#         print,x_value)
+        sample_min,sample_max = max(0,abs(x_value-x0)//dx - a + 1),min(xs.shape[0],abs(x_value-x0)//dx + a)
+
+        samples = np.arange(sample_min,sample_max,dtype=int)
+#         print(sample_min,sample_max)
+        for sample in samples:
+            y[i] += ys[sample] * lanczos_kernel((x_value - xs[sample])/dx,a)
+    return y
+
+def lanczos_kernel(x,a):
+    if x == 0:
+        return 1
+    if x > -a and x < a:
+        return a*np.sin(np.pi*u.radian*x) * np.sin(np.pi*u.radian*x/a)/(np.pi**2 * x**2)
+    return 0
+
+def same_dist_elems(arr):
+    diff = arr[1] - arr[0]
+    for x in range(1, len(arr) - 1):
+        if arr[x + 1] - arr[x] != diff:
+            return False
+    return True
 
 def get_skycalc_defaults(inputFilename,almFilename,isVerbose=False):
     dic = {}

@@ -41,7 +41,7 @@ if __name__ == '__main__':
     args   = parser.parse_args()
 
 
-    out_name = "out/sim_ful_lr{}_s{}_e{}_v{}_ep{}_g{}_w{}_a{}.h5".format(args.lr
+    out_name = "out/sim_full_lr{}_s{}_e{}_v{}_ep{}_g{}_w{}_a{}.h5".format(args.lr
                         ,args.s2n,args.epoches
                         ,args.vp,args.epsilon,args.gamma,args.w,args.a)
     out = simulator.main(args.lr

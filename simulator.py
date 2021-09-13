@@ -62,11 +62,11 @@ def main(low_resolution,s2n,epoches,vp,epsilon,gamma,w,stellarname_wave,stellarn
     f_t = np.empty((epoches,xs.shape[0]))
     f_g = interpolate(xs,x_g,trans_gas)
 
-    f_sum = np.empty((epoches,xs.shape[0]))
+    f_theory = np.empty((epoches,xs.shape[0]))
     for i in range(epoches):
         f_s[i,:]   = interpolate(xs + deltas[i],x_s,     flux_stellar)
         f_t[i,:]   = interpolate(xs,x_t[i,:],trans_tellurics[i])
-        f_sum[i,:] = f_s[i,:] * f_t[i,:] * f_g
+        f_theory[i,:] = f_s[i,:] * f_t[i,:] * f_g
 
     # now take lambda grids from all of these and make a new one with
     # spacing equal to the minimum median spacing of the above grids
@@ -91,10 +91,10 @@ def main(low_resolution,s2n,epoches,vp,epsilon,gamma,w,stellarname_wave,stellarn
 
     # Convolve with Telescope PSF
     ################################################
-    g_l = np.arange(-3.0/low_resolution,3.0/low_resolution,step=median_diff)
-    g_l = gauss_func(g_l,mu=0.0,sigma=1.0/low_resolution)
-    g_l /= np.linalg.norm(g_l,ord=1)
-    f_tot = np.apply_along_axis(img.convolve,0,f_sum,g_l) # convolve just tell star and gas
+    lsf = np.arange(-3.0/low_resolution,3.0/low_resolution,step=median_diff)
+    lsf = gauss_func(lsf,mu=0.0,sigma=1.0/low_resolution)
+    lsf /= np.linalg.norm(lsf,ord=1)
+    f_lsf = np.apply_along_axis(img.convolve,1,f_theory,lsf) # convolve just tell star and gas
 
     # Generate dataset grid & jitter & stretch
     ##################################################
@@ -105,23 +105,24 @@ def main(low_resolution,s2n,epoches,vp,epsilon,gamma,w,stellarname_wave,stellarn
 
     # Interpolate Spline and Add Noise
     ##################################################
-    s2n   = get_s2n(x_hat.shape,s2n)
-    f_ds  = np.empty(x_hat.shape)
+    s2n        = get_s2n(x_hat.shape,s2n)
+    f_exp      = np.empty(x_hat.shape)
+    f_readout  = np.empty(x_hat.shape)
     noise = np.empty(x_hat.shape)
     for i in range(f_ds.shape[0]):
-        f_ds[i,:] = lanczos_interpolation(x_hat[i,:],xs,f_tot[i,:],dx=median_diff,a=a)
+        f_exp[i,:] = lanczos_interpolation(x_hat[i,:],xs,f_lsf[i,:],dx=median_diff,a=a)
         for j in range(f_ds.shape[1]):
-            f_ds[i,j] *= random.normal(1,1./s2n[i,j])
+            f_readout[i,j] = f_exp[i,j] * random.normal(1,1./s2n[i,j])
 
     # Get Error Bars
     ###################################################
-    ferr_out = generate_errors(f_ds,s2n,gamma)
+    ferr_out = generate_errors(f_readout,s2n,gamma)
     lmb_out  = np.exp(x)
 
     # Pack Output into Dictionary
     ###################################################
     out = {"wavelength_sample":lmb_out,
-            "flux":f_ds,
+            "flux":f_readout,
             "flux_error":ferr_out,
             "wavelength_theory":np.exp(xs),
             "flux_tellurics":f_t,

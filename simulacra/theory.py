@@ -1,6 +1,6 @@
 import numpy as np
 import astropy.units as u
-import matplotlib.pyplot as plt
+
 
 class TheoryModel:
     def __init__(self):
@@ -30,6 +30,7 @@ class TheoryModel:
         return np.log(self._wave/u.Angstrom)
 
     def plot(self,ax,epoch_idx,normalize=None,nargs=[]):
+        import matplotlib.pyplot as plt
         y = self.flux[epoch_idx,:]
         if normalize is not None:
             y = normalize(y,*nargs)
@@ -37,6 +38,7 @@ class TheoryModel:
         return ax
 
     def plot_interpolated(self,ax,epoch_idx,normalize=None,nargs=[]):
+        import matplotlib.pyplot as plt
         # import matplotlib.pyplot as plt
         y = self.fs[epoch_idx,:]
         if normalize is not None:

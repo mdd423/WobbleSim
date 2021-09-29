@@ -116,7 +116,7 @@ class StarModel(TheoryModel):
 
 
 class PhoenixModel(TheoryModel):
-    def __init__(self,alpha,z,temperature,logg,velocity_padding=30*u.km/u.s,outdir=None):
+    def __init__(self,alpha,z,temperature,logg,ra,dec,observatory_name,amplitude,period,outdir=None):
         super(PhoenixModel,self).__init__()
         if outdir is None:
             self.outdir = os.path.join('data','stellar','PHOENIX')
@@ -125,16 +125,15 @@ class PhoenixModel(TheoryModel):
         self.z     = z
         self.logg  = logg
         self.alpha = alpha
-        self.velocity_padding = velocity_padding
         self.wavename = download_phoenix_wave(self.outdir)
         self.wave     = read_in_fits(self.wavename) * u.Angstrom
         self.color = 'red'
         # make these attributes of the phoenix model
-        self.observatory_name = 'APO'
-        self.ra, self.dec = np.random.uniform(0,360) * u.degree, np.random.uniform(-90,90) * u.degree
+        self.observatory_name = observatory_name
+        self.ra, self.dec = ra, dec
         # amplitude = np.random.uniform(a_min.value,a_max.to(a.unit).value) * a_min.unit
-        self.amplitude = 300 * u.km/u.s
-        self.period = 10 * u.day
+        self.amplitude = amplitude
+        self.period    = period
 
     def generate_spectra(self,epoches):
         self.times = get_random_times(epoches)

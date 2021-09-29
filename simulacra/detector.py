@@ -107,10 +107,25 @@ def average_difference(x):
 
 
 class DetectorData:
-    def __init__(self,wave,flux,ferr):
-        self.wave = wave
-        self.flux = flux
-        self.ferr = ferr
+    def __init__(self,data):
+        self.data = data
+        self.wave = data['data']['wave']
+        self.flux = data['data']['flux']
+        self.ferr = data['data']['ferr']
+
+    def to_h5(self,filename):
+        import h5py
+
+        hf = h5py.File(filename,"w")
+        for key in self.data.keys():
+            group = hf.create_group(key)
+            for subkey in self.data['key'].keys():
+                group.create_dataset(subkey,data=data[key][subkey])
+
+        hf.close()
+
+    def __getidex__(self,key):
+        return self.data[key]
 
     @property
     def x(self):
@@ -140,7 +155,7 @@ class DetectorData:
 
 
 class Detector:
-    def __init__(self,stellar_model,resolution,epsilon=0.001,s2n=20,gamma=1.0,w=1.0,a=4):
+    def __init__(self,stellar_model,resolution,epsilon=0.0,s2n=20,gamma=1.0,w=0.0,a=4):
         '''Detector model that simulates spectra from star given resolution...
 
         Detector takes on a given theoretical `stellar_model`, `resolution`, with
@@ -159,7 +174,7 @@ class Detector:
 
         Returns
         -------
-        data: DetectorData type that contains all parameters generate 
+        data: DetectorData type that contains all parameters generate
         '''
 
         self.stellar_model = stellar_model
@@ -177,6 +192,8 @@ class Detector:
         self._lambmax = 100000 * u.nm
 
         self.sigma_range   = 5.0
+        self.lsf_const_coeffs = [1.0]
+
 
     def add_model(self,model):
         self.transmission_models.append(model)
@@ -248,10 +265,11 @@ class Detector:
     def xmax(self):
         return np.log(self._lambmax/u.Angstrom)
 
-    def simulate(self,epoches):
+    def simulate(self,epoches,convolve_on=True):
 
         flux, wave, deltas = self.stellar_model.generate_spectra(epoches)
         differences = [get_median_difference(self.stellar_model.x)]
+        print('generating spectra...')
         for model in self.transmission_models:
             model.generate_transmission(epoches)
             differences += [get_median_difference(model.x[iii,:]) for iii in range(model.x.shape[0])]
@@ -269,7 +287,9 @@ class Detector:
         # Interpolate all models and combine onto detector
         ##################################################################
         self.fs = np.empty((epoches,self.xs.shape[0]))
+        print('interpolating spline...')
         for i in range(epoches):
+            print(i)
             self.stellar_model.fs[i,:] = interpolate(self.xs + deltas[i],self.stellar_model.x,self.stellar_model.flux)
             self.fs[i,:] = self.stellar_model.fs[i,:]
             for model in self.transmission_models:
@@ -278,13 +298,16 @@ class Detector:
         # loop through stellar, tellurics, and gas cell models and generate spectra
         # stellar model needs to exist at the very least
         # interpolate, convolve, jitter, stretch, noise, signal to noise ratio, errorbars
-        self.lsf_coeffs      = np.ones((self.fs.shape[1],2))
-        self.lsf_coeffs[:,1] *= 0.25
+        self.lsf_coeffs =np.outer(np.ones((self.fs.shape[1],len(self.lsf_const_coeffs))), self.lsf_const_coeffs)
 
         sigma = 1.0/self.resolution
         x          = np.arange(-self.sigma_range * sigma,self.sigma_range * sigma,step=new_step_size)
         self.lsf_centering = int(x.shape[0]/2)
-        self.f_lsf = convolve_hermites(self.fs,self.lsf_coeffs,self.lsf_centering,x,sigma) #np.einsum('jm,im->ij',mat,self.fs)
+        print('convolving...')
+        if convolve_on:
+            self.f_lsf = convolve_hermites(self.fs,self.lsf_coeffs,self.lsf_centering,x,sigma) #np.einsum('jm,im->ij',mat,self.fs)
+        else:
+            self.f_lsf = self.fs
 
         # Generate dataset grid & jitter & stretch
         ##################################################
@@ -298,7 +321,9 @@ class Detector:
         s2n_grid  = get_s2n(x_hat.shape,self.s2n)
         f_exp     = np.empty(x_hat.shape)
         f_readout = np.empty(x_hat.shape)
+        print('interpolating lanczos...')
         for i in range(f_exp.shape[0]):
+            print(i)
             f_exp[i,:] = lanczos_interpolation(x_hat[i,:],self.xs,self.f_lsf[i,:],dx=new_step_size,a=self.a)
             for j in range(f_exp.shape[1]):
                 f_readout[i,j] = f_exp[i,j] * random.normal(1,1./s2n_grid[i,j])
@@ -308,47 +333,42 @@ class Detector:
         ferr_out = generate_errors(f_readout,s2n_grid,self.gamma)
         lmb_out  = np.exp(x)
 
-        data = DetectorData(lmb_out,f_readout,ferr_out)
-
         # Pack Output into Dictionary
         ###################################################
-        out = {"wavelength_sample":lmb_out,
+                # detector data
+        out = {"data":
+                {"wave":lmb_out,
                 "flux":f_readout,
-                "flux_error":ferr_out,
-                "wavelength_theory":np.exp(self.xs),
+                "ferr":ferr_out},
+                # parameters
+                "parameters":
+                {"del":delt,
+                "m":m,
+                "a":self.a,
+                "lsf_coeffs":self.lsf_coeffs,
+                "deltas":self.stellar_model.deltas,
+                "rvs":self.stellar_model.rvs},
+                # detector theory
+                "theory":
+                {"times":self.stellar_model.times,
+                "resolution":self.resolution,
+                "wave_the":np.exp(self.xs),
                 "flux_lsf":self.f_lsf,
-                "del":delt,
-                "m":m}
+                "flux_the":self.fs}
+                }
+        # transmission models parameters and theory
         out["flux " + self.stellar_model.__class__.__name__] = self.stellar_model.fs
         for model in self.transmission_models:
-            out["flux " + model.__class__.__name__] = model.fs
+            try:
+                for key in model.parameters.keys():
+                    out['parameters'][key] = model.parameters[key]
+            except AttributeError:
+                pass
+            out['theory']["flux " + model.__class__.__name__] = model.fs
 
-        return out, data
+            data = DetectorData(out)
 
-    def to_h5(self):
-        import h5py
-
-        hf = h5py.File(out_name,"w")
-        theory_group = hf.create_group("theory")
-        theory_group.create_dataset("wavelength",data=out["wavelength_theory"])
-        theory_group.create_dataset("flux_stellar",data=out["flux_stellar"])
-        theory_group.create_dataset("flux_tellurics",data=out["flux_tellurics"])
-        theory_group.create_dataset("flux_gas",data=out["flux_gas"])
-        theory_group.create_dataset("flux_lsf",data=out["flux_lsf"])
-
-        sample_group = hf.create_group("samples")
-        sample_group.create_dataset("wavelength",data=out["wavelength_sample"])
-        sample_group.create_dataset("flux",data=out["flux"])
-        sample_group.create_dataset("flux_error",data=out["flux_error"])
-
-        consts_group = hf.create_group("constants")
-        consts_group.create_dataset("m",data=out["m"])
-        consts_group.create_dataset("del",data=out["del"])
-        consts_group.create_dataset("airmass",data=out["airmass"])
-        consts_group.create_dataset("delta",data=out["delta"])
-        consts_group.create_dataset("low_resolution",data=args.lr)
-
-        hf.close()
+        return data
 
     def plot(self,ax,epoch_idx,normalize=None,nargs=[]):
         y = self.fs[epoch_idx,:]

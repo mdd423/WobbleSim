@@ -45,8 +45,18 @@ def hermitegaussian(coeffs,x,sigma):
     herms = np.polynomial.hermite.Hermite(coeffs)
     return herms(xhat) * np.exp(-xhat**2)
 
-def convolve_hermites(f_in,coeffs,centering,sigma,sigma_range):
+def convolve_hermites(f_in,coeffs,center_kw,sigma,sigma_range):
     x = np.arange(-sigma_range * sigma,sigma_range * sigma,step=new_step_size)
+    if center_kw == 'centered':
+        centering = int(x.shape[0]/2)
+    elif center_kw == 'right':
+        centering = 0
+    elif center_kw == 'left':
+        centering = x.shape[0] - 1
+    else:
+        print('convolving about center')
+        centering = int(x.shape[0]/2)
+
     f_out = np.empty(f_in.shape)
     size = f_in.shape[0]
     n    = x.shape[0]
@@ -116,7 +126,8 @@ class DetectorData:
             for subkey in self.data[key].keys():
                 print('\t'+subkey)
                 if subkey == 'times':
-                    times = np.array([x.strftime("%d-%b-%Y (%H:%M:%S.%f)") for x in self.data[key][subkey]],dtype=str)
+                    dt = h5py.special_dtype(vlen=str)
+                    times = np.array([x.strftime("%d-%b-%Y (%H:%M:%S.%f)") for x in self.data[key][subkey]],dtype=dt)
                     print(times)
                     group.create_dataset(subkey,data=times)
                 else:
@@ -302,7 +313,7 @@ class Detector:
 
         # should be an array that can vary over pixel j or hermite m
         sigma = 1.0/self.resolution
-        self.lsf_centering = int(x.shape[0]/2)
+        self.lsf_centering = 'centered'
         print('convolving...')
         if convolve_on:
             for ii in range(self.f_lsf.shape[0]):

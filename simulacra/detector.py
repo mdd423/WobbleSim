@@ -116,7 +116,8 @@ class DetectorData:
             for subkey in self.data[key].keys():
                 print('\t'+subkey)
                 if subkey == 'times':
-                    times = np.array([x.strftime("%d-%b-%Y (%H:%M:%S.%f)") for x in self.data[key][subkey]],dtype=str)
+                    dt = h5py.special_dtype(vlen=str)
+                    times = np.array([x.strftime("%d-%b-%Y (%H:%M:%S.%f)") for x in self.data[key][subkey]],dtype=dt)
                     print(times)
                     group.create_dataset(subkey,data=times)
                 else:

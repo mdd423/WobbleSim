@@ -45,16 +45,16 @@ def hermitegaussian(coeffs,x,sigma):
     herms = np.polynomial.hermite.Hermite(coeffs)
     return herms(xhat) * np.exp(-xhat**2)
 
-def convolve_hermites(f_in,coeffs,centering,x,sigma):
+def convolve_hermites(f_in,coeffs,centering,sigma,sigma_range):
+    x = np.arange(-sigma_range * sigma,sigma_range * sigma,step=new_step_size)
     f_out = np.empty(f_in.shape)
-    size = f_in.shape[1]
+    size = f_in.shape[0]
     n    = x.shape[0]
-    for ii in range(f_out.shape[0]):
-        for jj in range(f_out.shape[1]):
-            kernel = hermitegaussian(coeffs[jj,:],x,sigma)
-            # L1 normalize the kernel so the total flux is conserved
-            kernel /= np.sum(kernel)
-            f_out[ii,jj] = np.dot(f_in[ii,max(0,jj-centering):min(size,jj+n-centering)], kernel[max(0,centering-jj):min(n,size-jj+centering)])
+    for jj in range(f_out.shape[1]):
+        kernel = hermitegaussian(coeffs[jj,:],x,sigma)
+        # L1 normalize the kernel so the total flux is conserved
+        kernel /= np.sum(kernel)
+        f_out[jj] = np.dot(f_in[max(0,jj-centering):min(size,jj+n-centering)], kernel[max(0,centering-jj):min(n,size-jj+centering)])
     return f_out
 
 def lanczos_interpolation(x,xs,ys,dx,a=4):
@@ -93,15 +93,6 @@ def generate_errors(f,s2n,gamma=1.0):
             f_err[i,j] = error
     return f_err
 
-# def mean_lsf(low_resolution,spacing,sigma_range=5.0):
-#     lsf = np.arange(-sigma_range/low_resolution,sigma_range/low_resolution,step=spacing)
-#     lsf = gauss_func(lsf,mu=0.0,sigma=1.0/low_resolution)
-#     lsf /= np.linalg.norm(lsf,ord=1)
-#     return lsf
-#
-# def gauss_func(x,mu,sigma):
-#     return np.exp((-1/2)*(x - mu)**2/(sigma**2))
-
 def average_difference(x):
     return np.mean([t - s for s, t in zip(x, x[1:])])
 
@@ -117,10 +108,19 @@ class DetectorData:
         import h5py
 
         hf = h5py.File(filename,"w")
+        print(self.data.keys())
         for key in self.data.keys():
             group = hf.create_group(key)
-            for subkey in self.data['key'].keys():
-                group.create_dataset(subkey,data=data[key][subkey])
+            print(key)
+            # print(self.data[key])
+            for subkey in self.data[key].keys():
+                print('\t'+subkey)
+                if subkey == 'times':
+                    times = np.array([x.strftime("%d-%b-%Y (%H:%M:%S.%f)") for x in self.data[key][subkey]],dtype=str)
+                    print(times)
+                    group.create_dataset(subkey,data=times)
+                else:
+                    group.create_dataset(subkey,data=self.data[key][subkey])
 
         hf.close()
 
@@ -274,7 +274,7 @@ class Detector:
             model.generate_transmission(epoches)
             differences += [get_median_difference(model.x[iii,:]) for iii in range(model.x.shape[0])]
         new_step_size = min(differences)
-
+        print(new_step_size)
         # Initialize interpolating arrays
         ###################################################################
         self.xs = np.arange(self.xmin,self.xmax,step=new_step_size)
@@ -300,12 +300,13 @@ class Detector:
         # interpolate, convolve, jitter, stretch, noise, signal to noise ratio, errorbars
         self.lsf_coeffs =np.outer(np.ones((self.fs.shape[1],len(self.lsf_const_coeffs))), self.lsf_const_coeffs)
 
+        # should be an array that can vary over pixel j or hermite m
         sigma = 1.0/self.resolution
-        x          = np.arange(-self.sigma_range * sigma,self.sigma_range * sigma,step=new_step_size)
         self.lsf_centering = int(x.shape[0]/2)
         print('convolving...')
         if convolve_on:
-            self.f_lsf = convolve_hermites(self.fs,self.lsf_coeffs,self.lsf_centering,x,sigma) #np.einsum('jm,im->ij',mat,self.fs)
+            for ii in range(self.f_lsf.shape[0]):
+                self.f_lsf[ii,:] = convolve_hermites(self.fs[ii,:],self.lsf_coeffs,self.lsf_centering,sigma,self.sigma_range)
         else:
             self.f_lsf = self.fs
 
@@ -346,6 +347,9 @@ class Detector:
                 "m":m,
                 "a":self.a,
                 "lsf_coeffs":self.lsf_coeffs,
+                "ra":self.stellar_model.ra,
+                "dec":self.stellar_model.dec,
+                "obs":self.stellar_model.observatory_name,
                 "deltas":self.stellar_model.deltas,
                 "rvs":self.stellar_model.rvs},
                 # detector theory
@@ -357,14 +361,14 @@ class Detector:
                 "flux_the":self.fs}
                 }
         # transmission models parameters and theory
-        out["flux " + self.stellar_model.__class__.__name__] = self.stellar_model.fs
+        out['theory']["flux " + self.stellar_model.__class__.__name__] = self.stellar_model.fs
         for model in self.transmission_models:
             try:
                 for key in model.parameters.keys():
                     out['parameters'][key] = model.parameters[key]
             except AttributeError:
                 pass
-            out['theory']["flux " + model.__class__.__name__] = model.fs
+            out['theory']["transmission " + model.__class__.__name__] = model.fs
 
             data = DetectorData(out)
 

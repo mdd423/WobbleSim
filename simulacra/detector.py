@@ -134,6 +134,7 @@ class DetectorData:
                     try:
                         group.create_dataset(subkey,data=self.data[key][subkey])
                     except TypeError:
+                        print(subkey, ' saving as string')
                         dt = h5py.special_dtype(vlen=str)
                         arr = np.array([str(self.data[key][subkey])],dtype=dt)
                         group.create_dataset(subkey,data=arr)
@@ -169,18 +170,18 @@ class DetectorData:
         ax.errorbar(self.wave,y,self.ferr[epoch_idx,:],xerr=None,fmt='.k',alpha=0.9,label='Data')
         return ax
 
-    def plot_data(self,ax,epoch_idx,normalize=None,nargs=[]):
+    def plot_the(self,ax,epoch_idx,normalize=None,nargs=[]):
         y = self.data['theory']['flux_the'][epoch_idx,:]
         if normalize is not None:
             y = normalize(y,*nargs)
-        ax.plot(self.data.xs, y,'.',color='gray',alpha=0.4,label='Total ' + self.__class__.__name__,markersize=3)
+        ax.plot(self.data['theory']['wave_the'], y,'.',color='gray',alpha=0.4,label='Total ' + self.__class__.__name__,markersize=3)
         return ax
 
     def plot_lsf(self,ax,epoch_idx,normalize=None,nargs=[]):
         y = self.data['theory']['flux_lsf'][epoch_idx,:]
         if normalize is not None:
             y = normalize(y,*nargs)
-        ax.plot(self.data.xs, y,'.',color='magenta',alpha=0.4,label='LSF ' + self.__class__.__name__,markersize=3)
+        ax.plot(self.data['theory']['wave_the'], y,'.',color='magenta',alpha=0.4,label='LSF ' + self.__class__.__name__,markersize=3)
         return ax
 
 
@@ -369,7 +370,7 @@ class Detector:
         ###################################################
                 # detector data
         data = {"data":
-                {"wave":np.exp(x),
+                {"wave":np.exp(x) * u.Angstrom,
                 "wave_unit":u.Angstrom,
                 "flux":f_readout,
                 "flux_exp":f_exp,
@@ -381,19 +382,19 @@ class Detector:
                 "m":m,
                 "a":self.a,
                 "lsf_coeffs":self.lsf_coeffs,
-                "ra":self.stellar_model.ra.value,
+                "ra":self.stellar_model.ra,
                 "ra_unit":self.stellar_model.ra.unit,
-                "dec":self.stellar_model.dec.value,
+                "dec":self.stellar_model.dec,
                 "dec_unit":self.stellar_model.dec.unit,
                 "obs":self.stellar_model.observatory_name,
-                "rvs":self.stellar_model.rvs.value,
+                "rvs":self.stellar_model.rvs,
                 "rv_unit":self.stellar_model.rvs.unit,
-                "period":self.stellar_model.period.value,
+                "period":self.stellar_model.period,
                 "period_unit":self.stellar_model.period.unit,
                 "resolution":self.resolution},
                 # detector and transmission theoretical model
                 "theory":
-                {"wave_the":np.exp(self.xs),
+                {"wave_the":np.exp(self.xs)*u.Angstrom,
                 "wave_the_unit": u.Angstrom,
                 "flux_lsf":f_lsf,
                 "flux_the":fs,

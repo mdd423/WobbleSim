@@ -124,14 +124,19 @@ class DetectorData:
             print(key)
             # print(self.data[key])
             for subkey in self.data[key].keys():
-                print('\t'+subkey)
+                print('\t'+subkey, type(self.data[key][subkey]))
                 if subkey == 'times':
                     dt = h5py.special_dtype(vlen=str)
                     times = np.array([x.strftime('%Y-%m-%dT%H:%M:%S.%f%z') for x in self.data[key][subkey]],dtype=dt)
                     print(times)
                     group.create_dataset(subkey,data=times)
                 else:
-                    group.create_dataset(subkey,data=self.data[key][subkey])
+                    try:
+                        group.create_dataset(subkey,data=self.data[key][subkey])
+                    except TypeError:
+                        dt = h5py.special_dtype(vlen=str)
+                        arr = np.array([str(self.data[key][subkey])],dtype=dt)
+                        group.create_dataset(subkey,data=arr)
 
         hf.close()
 
@@ -165,14 +170,14 @@ class DetectorData:
         return ax
 
     def plot_data(self,ax,epoch_idx,normalize=None,nargs=[]):
-        y = self.data.theory.flux_the[epoch_idx,:]
+        y = self.data[theory][flux_the][epoch_idx,:]
         if normalize is not None:
             y = normalize(y,*nargs)
         ax.plot(self.data.xs, y,'.',color='gray',alpha=0.4,label='Total ' + self.__class__.__name__,markersize=3)
         return ax
 
     def plot_lsf(self,ax,epoch_idx,normalize=None,nargs=[]):
-        y = self.data.f_lsf[epoch_idx,:]
+        y = self.data[theory][flux_lsf][epoch_idx,:]
         if normalize is not None:
             y = normalize(y,*nargs)
         ax.plot(self.data.xs, y,'.',color='magenta',alpha=0.4,label='LSF ' + self.__class__.__name__,markersize=3)
@@ -210,7 +215,6 @@ class Detector:
         self.gamma   = gamma
         self.w       = w
         self.a       = a
-        self.sigma   = 1.0/self.resolution
 
         self.resolution = resolution
 
@@ -219,6 +223,7 @@ class Detector:
 
         self.sigma_range   = 5.0
         self.lsf_const_coeffs = [1.0]
+        self.sigma      = 1.0/resolution
 
 
     def add_model(self,model):
@@ -299,6 +304,7 @@ class Detector:
         for model in self.transmission_models:
             model.generate_transmission(epoches)
             differences += [get_median_difference(model.x[iii,:]) for iii in range(model.x.shape[0])]
+            print(model, differences)
         new_step_size = min(differences)
         print(new_step_size)
         # Initialize interpolating arrays

@@ -170,14 +170,14 @@ class DetectorData:
         return ax
 
     def plot_data(self,ax,epoch_idx,normalize=None,nargs=[]):
-        y = self.data[theory][flux_the][epoch_idx,:]
+        y = self.data['theory']['flux_the'][epoch_idx,:]
         if normalize is not None:
             y = normalize(y,*nargs)
         ax.plot(self.data.xs, y,'.',color='gray',alpha=0.4,label='Total ' + self.__class__.__name__,markersize=3)
         return ax
 
     def plot_lsf(self,ax,epoch_idx,normalize=None,nargs=[]):
-        y = self.data[theory][flux_lsf][epoch_idx,:]
+        y = self.data['theory']['flux_lsf'][epoch_idx,:]
         if normalize is not None:
             y = normalize(y,*nargs)
         ax.plot(self.data.xs, y,'.',color='magenta',alpha=0.4,label='LSF ' + self.__class__.__name__,markersize=3)

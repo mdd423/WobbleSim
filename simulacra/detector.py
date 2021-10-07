@@ -45,22 +45,23 @@ def hermitegaussian(coeffs,x,sigma):
     herms = np.polynomial.hermite.Hermite(coeffs)
     return herms(xhat) * np.exp(-xhat**2)
 
-def convolve_hermites(f_in,coeffs,center_kw,sigma,sigma_range):
-    x = np.arange(-sigma_range * sigma,sigma_range * sigma,step=new_step_size)
+
+def convolve_hermites(f_in,coeffs,center_kw,sigma,sigma_range,spacing):
+    x = np.arange(-sigma_range * sigma,sigma_range * sigma,step=spacing)
     if center_kw == 'centered':
         centering = int(x.shape[0]/2)
     elif center_kw == 'right':
         centering = 0
     elif center_kw == 'left':
-        centering = x.shape[0] - 1
+        centering = x.shape[0]-1
     else:
-        print('convolving about center')
+        print('setting lsf centering to middle')
         centering = int(x.shape[0]/2)
 
     f_out = np.empty(f_in.shape)
     size = f_in.shape[0]
     n    = x.shape[0]
-    for jj in range(f_out.shape[1]):
+    for jj in range(f_out.shape[0]):
         kernel = hermitegaussian(coeffs[jj,:],x,sigma)
         # L1 normalize the kernel so the total flux is conserved
         kernel /= np.sum(kernel)
@@ -127,7 +128,11 @@ class DetectorData:
                 print('\t'+subkey)
                 if subkey == 'times':
                     dt = h5py.special_dtype(vlen=str)
+<<<<<<< HEAD
                     times = np.array([x.strftime("%d-%b-%Y (%H:%M:%S.%f)") for x in self.data[key][subkey]],dtype=dt)
+=======
+                    times = np.array([x.strftime('%Y-%m-%dT%H:%M:%S.%f%z') for x in self.data[key][subkey]],dtype=dt)
+>>>>>>> dd69062d333c9ee4f1d7fd9fa9628e1f9fb07908
                     print(times)
                     group.create_dataset(subkey,data=times)
                 else:
@@ -164,6 +169,20 @@ class DetectorData:
         ax.errorbar(self.wave,y,self.ferr[epoch_idx,:],xerr=None,fmt='.k',alpha=0.9,label='Data')
         return ax
 
+    def plot_data(self,ax,epoch_idx,normalize=None,nargs=[]):
+        y = self.data.theory.flux_the[epoch_idx,:]
+        if normalize is not None:
+            y = normalize(y,*nargs)
+        ax.plot(self.data.xs, y,'.',color='gray',alpha=0.4,label='Total ' + self.__class__.__name__,markersize=3)
+        return ax
+
+    def plot_lsf(self,ax,epoch_idx,normalize=None,nargs=[]):
+        y = self.data.f_lsf[epoch_idx,:]
+        if normalize is not None:
+            y = normalize(y,*nargs)
+        ax.plot(self.data.xs, y,'.',color='magenta',alpha=0.4,label='LSF ' + self.__class__.__name__,markersize=3)
+        return ax
+
 
 class Detector:
     def __init__(self,stellar_model,resolution,epsilon=0.0,s2n=20,gamma=1.0,w=0.0,a=4):
@@ -196,6 +215,7 @@ class Detector:
         self.gamma   = gamma
         self.w       = w
         self.a       = a
+        self.sigma   = 1.0/self.resolution
 
         self.resolution = resolution
 
@@ -297,29 +317,34 @@ class Detector:
 
         # Interpolate all models and combine onto detector
         ##################################################################
-        self.fs = np.empty((epoches,self.xs.shape[0]))
+        fs = np.empty((epoches,self.xs.shape[0]))
         print('interpolating spline...')
         for i in range(epoches):
             print(i)
             self.stellar_model.fs[i,:] = interpolate(self.xs + deltas[i],self.stellar_model.x,self.stellar_model.flux)
-            self.fs[i,:] = self.stellar_model.fs[i,:]
+            fs[i,:] = self.stellar_model.fs[i,:]
             for model in self.transmission_models:
                 model.fs[i,:] = interpolate(self.xs,model.x[i,:],model.flux[i,:])
-                self.fs[i,:] *= model.fs[i,:]
+                fs[i,:] *= model.fs[i,:]
         # loop through stellar, tellurics, and gas cell models and generate spectra
         # stellar model needs to exist at the very least
         # interpolate, convolve, jitter, stretch, noise, signal to noise ratio, errorbars
-        self.lsf_coeffs =np.outer(np.ones((self.fs.shape[1],len(self.lsf_const_coeffs))), self.lsf_const_coeffs)
+        self.lsf_coeffs = np.outer(np.ones((fs.shape[1],len(self.lsf_const_coeffs))), self.lsf_const_coeffs)
 
         # should be an array that can vary over pixel j or hermite m
+<<<<<<< HEAD
         sigma = 1.0/self.resolution
         self.lsf_centering = 'centered'
+=======
+        self.lsf_centering = 'centered'
+        f_lsf = np.empty(fs.shape)
+>>>>>>> dd69062d333c9ee4f1d7fd9fa9628e1f9fb07908
         print('convolving...')
         if convolve_on:
-            for ii in range(self.f_lsf.shape[0]):
-                self.f_lsf[ii,:] = convolve_hermites(self.fs[ii,:],self.lsf_coeffs,self.lsf_centering,sigma,self.sigma_range)
+            for ii in range(f_lsf.shape[0]):
+                f_lsf[ii,:] = convolve_hermites(fs[ii,:],self.lsf_coeffs,self.lsf_centering,self.sigma,self.sigma_range,new_step_size)
         else:
-            self.f_lsf = self.fs
+            f_lsf = fs
 
         # Generate dataset grid & jitter & stretch
         ##################################################
@@ -336,65 +361,56 @@ class Detector:
         print('interpolating lanczos...')
         for i in range(f_exp.shape[0]):
             print(i)
-            f_exp[i,:] = lanczos_interpolation(x_hat[i,:],self.xs,self.f_lsf[i,:],dx=new_step_size,a=self.a)
+            f_exp[i,:] = lanczos_interpolation(x_hat[i,:],self.xs,f_lsf[i,:],dx=new_step_size,a=self.a)
             for j in range(f_exp.shape[1]):
                 f_readout[i,j] = f_exp[i,j] * random.normal(1,1./s2n_grid[i,j])
 
         # Get Error Bars
         ###################################################
         ferr_out = generate_errors(f_readout,s2n_grid,self.gamma)
-        lmb_out  = np.exp(x)
 
         # Pack Output into Dictionary
         ###################################################
                 # detector data
-        out = {"data":
-                {"wave":lmb_out,
+        data = {"data":
+                {"wave":np.exp(x),
+                "wave_unit":u.Angstrom,
                 "flux":f_readout,
-                "ferr":ferr_out},
-                # parameters
+                "flux_exp":f_exp,
+                "ferr":ferr_out,
+                "times":self.stellar_model.times},
+                # parameters of both star and telescope
                 "parameters":
                 {"del":delt,
                 "m":m,
                 "a":self.a,
                 "lsf_coeffs":self.lsf_coeffs,
-                "ra":self.stellar_model.ra,
-                "dec":self.stellar_model.dec,
+                "ra":self.stellar_model.ra.value,
+                "ra_unit":self.stellar_model.ra.unit,
+                "dec":self.stellar_model.dec.value,
+                "dec_unit":self.stellar_model.dec.unit,
                 "obs":self.stellar_model.observatory_name,
-                "deltas":self.stellar_model.deltas,
-                "rvs":self.stellar_model.rvs},
-                # detector theory
+                "rvs":self.stellar_model.rvs.value,
+                "rv_unit":self.stellar_model.rvs.unit,
+                "period":self.stellar_model.period.value,
+                "period_unit":self.stellar_model.period.unit,
+                "resolution":self.resolution},
+                # detector and transmission theoretical model
                 "theory":
-                {"times":self.stellar_model.times,
-                "resolution":self.resolution,
-                "wave_the":np.exp(self.xs),
-                "flux_lsf":self.f_lsf,
-                "flux_the":self.fs}
+                {"wave_the":np.exp(self.xs),
+                "wave_the_unit": u.Angstrom,
+                "flux_lsf":f_lsf,
+                "flux_the":fs,
+                "flux_star":self.stellar_model.fs}
                 }
         # transmission models parameters and theory
-        out['theory']["flux " + self.stellar_model.__class__.__name__] = self.stellar_model.fs
         for model in self.transmission_models:
             try:
                 for key in model.parameters.keys():
-                    out['parameters'][key] = model.parameters[key]
+                    data['parameters'][key] = model.parameters[key]
             except AttributeError:
                 pass
-            out['theory']["transmission " + model.__class__.__name__] = model.fs
+            data['theory']["trans " + model.__class__.__name__] = model.fs
+        out = DetectorData(data)
 
-            data = DetectorData(out)
-
-        return data
-
-    def plot(self,ax,epoch_idx,normalize=None,nargs=[]):
-        y = self.fs[epoch_idx,:]
-        if normalize is not None:
-            y = normalize(y,*nargs)
-        ax.plot(self.xs, y,'.',color='gray',alpha=0.4,label='Total ' + self.__class__.__name__,markersize=3)
-        return ax
-
-    def plot_lsf(self,ax,epoch_idx,normalize=None,nargs=[]):
-        y = self.f_lsf[epoch_idx,:]
-        if normalize is not None:
-            y = normalize(y,*nargs)
-        ax.plot(self.xs, y,'.',color='magenta',alpha=0.4,label='LSF ' + self.__class__.__name__,markersize=3)
-        return ax
+        return out

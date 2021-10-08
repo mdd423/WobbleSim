@@ -381,6 +381,7 @@ class Detector:
                 {"del":delt,
                 "m":m,
                 "a":self.a,
+                "s2n":s2n_grid,
                 "lsf_coeffs":self.lsf_coeffs,
                 "ra":self.stellar_model.ra,
                 "ra_unit":self.stellar_model.ra.unit,

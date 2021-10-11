@@ -184,6 +184,9 @@ class DetectorData:
         ax.plot(self.data['theory']['wave_the'], y,'.',color='magenta',alpha=0.4,label='LSF ' + self.__class__.__name__,markersize=3)
         return ax
 
+    def plot_rvs(self,ax):
+        ax.plot(self.data['data']['times'],self.data['parameters']['rvs'],'*k')
+
 
 class Detector:
     def __init__(self,stellar_model,resolution,epsilon=0.0,s2n=20,gamma=1.0,w=0.0,a=4):
@@ -390,6 +393,8 @@ class Detector:
                 "ra_unit":self.stellar_model.ra.unit,
                 "dec":self.stellar_model.dec,
                 "dec_unit":self.stellar_model.dec.unit,
+                "velocity_drift":self.stellar_model.velocity_drift,
+                "velocity_drift_unit":self.stellar_model.velocity_drift.unit,
                 "obs":self.stellar_model.observatory_name,
                 "rvs":self.stellar_model.rvs,
                 "rv_unit":self.stellar_model.rvs.unit,

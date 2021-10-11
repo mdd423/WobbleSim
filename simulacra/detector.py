@@ -297,9 +297,8 @@ class Detector:
     def xmax(self):
         return np.log(self._lambmax/u.Angstrom)
 
-    def simulate(self,epoches,times=None,convolve_on=True):
-        if times is None:
-            times = simulacra.star.get_random_times(epoches)
+    def simulate(self,times,convolve_on=True):
+        epoches = times.shape[0]
         flux, wave, deltas = self.stellar_model.generate_spectra(epoches,times)
         differences = [get_median_difference(self.stellar_model.x)]
         print('generating spectra...')

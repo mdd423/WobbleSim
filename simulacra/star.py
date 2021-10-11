@@ -77,9 +77,9 @@ def zplusone(vel):
 def shifts(vel):
     return np.log(zplusone(vel))
 
-def get_random_times(n):
+def get_random_times(n,tframe=365*u.day):
     now = atime.Time.now()
-    dts = np.random.uniform(0,365,n) * u.day
+    dts = np.random.uniform(0,tframe.value,n) * tframe.unit
     times = now + dts
     return times
 

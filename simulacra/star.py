@@ -83,8 +83,8 @@ def get_random_times(n):
     times = now + dts
     return times
 
-def get_berv(times,observatory_name,ra,dec):
-    obj = coord.SkyCoord(ra,dec)
+def get_berv(times,observatory_name,ra,dec,velocity_drift):
+    obj = coord.SkyCoord(ra,dec,radial_velocity=velocity_drift)
     loc = coord.EarthLocation.of_site(observatory_name)
     bc  = obj.radial_velocity_correction(obstime=times,location=loc).to(u.km/u.s)
     return bc
@@ -94,8 +94,8 @@ def binary_system_velocity(times,amplitude,period,phase_time='2000-01-02'):
     ptime = (times - starttime)/period
     return amplitude * np.sin(2*np.pi*ptime*u.radian)
 
-def get_velocity_measurements(times,amplitude,observatory_name,ra,dec,period,epoches):
-    berv  = get_berv(times,observatory_name,ra,dec)
+def get_velocity_measurements(times,amplitude,observatory_name,ra,dec,period,epoches,velocity_drift):
+    berv  = get_berv(times,observatory_name,ra,dec,velocity_drift)
 
     rvs   = berv + binary_system_velocity(times,amplitude,period)
     return rvs
@@ -116,7 +116,7 @@ class StarModel(TheoryModel):
 
 
 class PhoenixModel(TheoryModel):
-    def __init__(self,alpha,z,temperature,logg,ra,dec,observatory_name,amplitude,period,outdir=None):
+    def __init__(self,alpha,z,temperature,logg,ra,dec,observatory_name,amplitude,period,velocity_drift,outdir=None):
         super(PhoenixModel,self).__init__()
         if outdir is None:
             self.outdir = os.path.join('data','stellar','PHOENIX')
@@ -134,11 +134,11 @@ class PhoenixModel(TheoryModel):
         # amplitude = np.random.uniform(a_min.value,a_max.to(a.unit).value) * a_min.unit
         self.amplitude = amplitude
         self.period    = period
+        self.velocity_drift = velocity_drift
 
-    def generate_spectra(self,epoches):
-        self.times = get_random_times(epoches)
-
-        self.rvs    = get_velocity_measurements(self.times,self.amplitude,self.observatory_name,self.ra,self.dec,self.period,epoches)
+    def generate_spectra(self,epoches,times):
+        self.times = times
+        self.rvs    = get_velocity_measurements(self.times,self.amplitude,self.observatory_name,self.ra,self.dec,self.period,epoches,self.velocity_drift)
         self.deltas = shifts(self.rvs)
         # self.deltas = sample_deltas(epoches,self.velocity_padding)
         fluxname = download_phoenix_model(self.alpha,self.z,self.temperature,self.logg,self.outdir)

@@ -297,9 +297,10 @@ class Detector:
     def xmax(self):
         return np.log(self._lambmax/u.Angstrom)
 
-    def simulate(self,epoches,convolve_on=True):
-
-        flux, wave, deltas = self.stellar_model.generate_spectra(epoches)
+    def simulate(self,epoches,times=None,convolve_on=True):
+        if times is None:
+            times = simulacra.star.get_random_times(epoches)
+        flux, wave, deltas = self.stellar_model.generate_spectra(epoches,times)
         differences = [get_median_difference(self.stellar_model.x)]
         print('generating spectra...')
         for model in self.transmission_models:
@@ -318,6 +319,7 @@ class Detector:
             model.fs = np.empty((epoches,self.xs.shape[0]))
 
         # Interpolate all models and combine onto detector
+        # PARALLELIZE
         ##################################################################
         fs = np.empty((epoches,self.xs.shape[0]))
         print('interpolating spline...')
@@ -346,11 +348,12 @@ class Detector:
         # Generate dataset grid & jitter & stretch
         ##################################################
         res_step_size = spacing_from_res(self.resolution)
-        x = np.arange(self.xmin,self.xmax,step=res_step_size)
-        x_hat, m    = stretch(x,epoches,self.epsilon)
-        x_hat, delt = jitter(x,epoches,self.w)
+        x             = np.arange(self.xmin,self.xmax,step=res_step_size)
+        x_hat, m      = stretch(x,epoches,self.epsilon)
+        x_hat, delt   = jitter(x,epoches,self.w)
 
         # Interpolate Spline and Add Noise
+        # PARALLELIZE
         ##################################################
         s2n_grid  = get_s2n(x_hat.shape,self.s2n)
         f_exp     = np.empty(x_hat.shape)
@@ -363,6 +366,7 @@ class Detector:
                 f_readout[i,j] = f_exp[i,j] * random.normal(1,1./s2n_grid[i,j])
 
         # Get Error Bars
+        # PARALLELIZE
         ###################################################
         ferr_out = generate_errors(f_readout,s2n_grid,self.gamma)
 

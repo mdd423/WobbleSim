@@ -339,13 +339,8 @@ class Detector:
         self.lsf_coeffs = np.outer(np.ones((fs.shape[1],len(self.lsf_const_coeffs))), self.lsf_const_coeffs)
 
         # should be an array that can vary over pixel j or hermite m
-<<<<<<< HEAD
-        sigma = 1.0/self.resolution
-        self.lsf_centering = 'centered'
-=======
         self.lsf_centering = 'centered'
         f_lsf = np.empty(fs.shape)
->>>>>>> dd69062d333c9ee4f1d7fd9fa9628e1f9fb07908
         print('convolving...')
         if convolve_on:
             for ii in range(f_lsf.shape[0]):

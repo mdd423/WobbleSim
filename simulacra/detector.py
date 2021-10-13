@@ -1,9 +1,12 @@
 import numpy as np
 import astropy.units as u
+import astropy.time as at
 import scipy.interpolate as interp
 import scipy.ndimage as img
 import scipy.sparse
 import numpy.random as random
+
+from simulacra.dataset import DetectorData
 
 def interpolate(x,xs,ys):
     spline = interp.CubicSpline(xs,ys)
@@ -106,88 +109,6 @@ def generate_errors(f,s2n,gamma=1.0):
 
 def average_difference(x):
     return np.mean([t - s for s, t in zip(x, x[1:])])
-
-
-class DetectorData:
-    def __init__(self,data):
-        self.data = data
-        self.wave = data['data']['wave']
-        self.flux = data['data']['flux']
-        self.ferr = data['data']['ferr']
-
-    def to_h5(self,filename):
-        import h5py
-
-        hf = h5py.File(filename,"w")
-        print(self.data.keys())
-        for key in self.data.keys():
-            group = hf.create_group(key)
-            print(key)
-            # print(self.data[key])
-            for subkey in self.data[key].keys():
-                print('\t'+subkey, type(self.data[key][subkey]))
-                if subkey == 'times':
-                    dt = h5py.special_dtype(vlen=str)
-                    times = np.array([x.strftime('%Y-%m-%dT%H:%M:%S.%f%z') for x in self.data[key][subkey]],dtype=dt)
-                    print(times)
-                    group.create_dataset(subkey,data=times)
-                else:
-                    try:
-                        group.create_dataset(subkey,data=self.data[key][subkey])
-                    except TypeError:
-                        print(subkey, ' saving as string')
-                        dt = h5py.special_dtype(vlen=str)
-                        arr = np.array([str(self.data[key][subkey])],dtype=dt)
-                        group.create_dataset(subkey,data=arr)
-
-        hf.close()
-
-    def __getidex__(self,key):
-        return self.data[key]
-
-    @property
-    def x(self):
-        return np.log(self.wave/u.Angstrom)
-
-    @property
-    def y(self):
-        return np.log(self.flux)
-
-    @property
-    def yerr(self):
-        return self.ferr/self.flux
-
-    def plot_xy(self,ax,epoch_idx,normalize=None,nargs=[]):
-        y = self.y[epoch_idx,:]
-        if normalize is not None:
-            y = normalize(y,*nargs)
-        ax.errorbar(self.x,y,self.yerr[epoch_idx,:],xerr=None,fmt='.k',alpha=0.9,label='Data')
-        return ax
-
-    def plot_wf(self,xs,epoch_idx,noralize=None,nargs=[]):
-        y = self.flux[epoch_idx,:]
-        if normalize is not None:
-            y = normalize(y,*nargs)
-        ax.errorbar(self.wave,y,self.ferr[epoch_idx,:],xerr=None,fmt='.k',alpha=0.9,label='Data')
-        return ax
-
-    def plot_the(self,ax,epoch_idx,normalize=None,nargs=[]):
-        y = self.data['theory']['flux_the'][epoch_idx,:]
-        if normalize is not None:
-            y = normalize(y,*nargs)
-        ax.plot(self.data['theory']['wave_the'], y,'.',color='gray',alpha=0.4,label='Total ' + self.__class__.__name__,markersize=3)
-        return ax
-
-    def plot_lsf(self,ax,epoch_idx,normalize=None,nargs=[]):
-        y = self.data['theory']['flux_lsf'][epoch_idx,:]
-        if normalize is not None:
-            y = normalize(y,*nargs)
-        ax.plot(self.data['theory']['wave_the'], y,'.',color='magenta',alpha=0.4,label='LSF ' + self.__class__.__name__,markersize=3)
-        return ax
-
-    def plot_rvs(self,ax):
-        ax.plot(self.data['data']['times'],self.data['parameters']['rvs'],'*k')
-
 
 class Detector:
     def __init__(self,stellar_model,resolution,epsilon=0.0,s2n=20,gamma=1.0,w=0.0,a=4):
@@ -378,7 +299,6 @@ class Detector:
                 # detector data
         data = {"data":
                 {"wave":np.exp(x) * u.Angstrom,
-                "wave_unit":u.Angstrom,
                 "flux":f_readout,
                 "flux_exp":f_exp,
                 "ferr":ferr_out,
@@ -391,21 +311,15 @@ class Detector:
                 "s2n":s2n_grid,
                 "lsf_coeffs":self.lsf_coeffs,
                 "ra":self.stellar_model.ra,
-                "ra_unit":self.stellar_model.ra.unit,
                 "dec":self.stellar_model.dec,
-                "dec_unit":self.stellar_model.dec.unit,
                 "velocity_drift":self.stellar_model.velocity_drift,
-                "velocity_drift_unit":self.stellar_model.velocity_drift.unit,
                 "obs":self.stellar_model.observatory_name,
                 "rvs":self.stellar_model.rvs,
-                "rv_unit":self.stellar_model.rvs.unit,
                 "period":self.stellar_model.period,
-                "period_unit":self.stellar_model.period.unit,
                 "resolution":self.resolution},
                 # detector and transmission theoretical model
                 "theory":
                 {"wave_the":np.exp(self.xs)*u.Angstrom,
-                "wave_the_unit": u.Angstrom,
                 "flux_lsf":f_lsf,
                 "flux_the":fs,
                 "flux_star":self.stellar_model.fs}

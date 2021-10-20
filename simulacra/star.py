@@ -42,16 +42,17 @@ def download_phoenix_wave(outdir):
 
         return outname
 
-def download_phoenix_model(alpha,z,temperature,logg,outdir=None):
-    directories = ['HiResFITS','PHOENIX-ACES-AGSS-COND-2011','Z{:+.1f}'.format(z)]
+def download_phoenix_model(star,outdir=None):
+    directories = ['data','HiResFITS','PHOENIX-ACES-AGSS-COND-2011','Z-{:.1f}'.format(star.distance.z)]
     # print(directories)
-    if alpha != 0.0:
-        directories[-1] += '.Alpha={:+.2f}'.format(alpha)
+    if star.alpha != 0.0:
+        directories[-1] += '.Alpha={:+.2f}'.format(star.alpha)
 
-    filename = 'lte{:05d}-{:1.2f}'.format(temperature,logg) + directories[-1][1:] + '.PHOENIX-ACES-AGSS-COND-2011-HiRes.fits'
+    filename = 'lte{:05d}-{:1.2f}'.format(star.temperature,star.logg) + directories[-1][1:] + '.PHOENIX-ACES-AGSS-COND-2011-HiRes.fits'
     outname = os.path.join(outdir,filename)
+    print(outname)
     if os.path.isfile(outname):
-        print('using saved wave file')
+        print('using saved flux file')
         return outname
 
     else:
@@ -60,6 +61,7 @@ def download_phoenix_model(alpha,z,temperature,logg,outdir=None):
         ftp = FTP('phoenix.astro.physik.uni-goettingen.de') #logs in
         ftp.login()
     #     for directory in directories:
+        print("ftp: {}\nfilename: {}\ndirs: {}".format(ftp, filename,directories))
         ftp.cwd(os.path.join(*directories))
         ftp.retrlines('LIST')
 
@@ -83,9 +85,9 @@ def get_random_times(n,tframe=365*u.day):
     times = now + dts
     return times
 
-def get_berv(times,observatory_name,ra,dec,velocity_drift):
-    obj = coord.SkyCoord(ra,dec,radial_velocity=velocity_drift)
-    loc = coord.EarthLocation.of_site(observatory_name)
+def get_berv(times,obs,ra,dec,v_d):
+    obj = coord.SkyCoord(ra,dec,radial_velocity=v_d)
+    loc = coord.EarthLocation.of_site(obs)
     bc  = obj.radial_velocity_correction(obstime=times,location=loc).to(u.km/u.s)
     return bc
 
@@ -94,11 +96,43 @@ def binary_system_velocity(times,amplitude,period,phase_time='2000-01-02'):
     ptime = (times - starttime)/period
     return amplitude * np.sin(2*np.pi*ptime*u.radian)
 
-def get_velocity_measurements(times,amplitude,observatory_name,ra,dec,period,epoches,velocity_drift):
-    berv  = get_berv(times,observatory_name,ra,dec,velocity_drift)
-
-    rvs   = berv + binary_system_velocity(times,amplitude,period)
+def get_velocity_measurements(times,amplitude,period,loc,target):
+    # berv  = get_berv(times,obs,ra,dec,velocity_drift)
+    berv = target.radial_velocity_correction(obstime=times,location=loc)
+    rvs  = berv + binary_system_velocity(times,amplitude,period)
     return rvs
+
+def get_night_grid(loc,tstart,tend):
+    from astroplan import Observer
+    observer = Observer(location=loc)
+    days = int((tend - tstart) / u.day)
+
+    # print(days)
+    all_times = tstart + np.linspace(0,days,days + 1)
+    sunset  = observer.sun_set_time(all_times,which='next')
+    sunrise = observer.sun_rise_time(all_times,which='next')
+
+    # print(all_times)
+    outarr = np.array([])
+    for i in range(len(sunrise)-1):
+        nighttime = (sunrise[i+1]-sunset[i])
+        outarr = np.concatenate((outarr,
+                                sunset[i] + \
+                                np.linspace(0,nighttime.value)))
+    return outarr
+
+def get_realistic_times(target,loc,all_times):
+
+    telescope_frame = coord.AltAz(obstime=all_times,location=loc)
+    secz = np.array(target.transform_to(telescope_frame).secz)
+    isvis = secz > 0
+
+    # time? alltimes
+    possible_times = all_times[isvis]
+    airmass = secz[isvis]
+
+    isreasonable = airmass < 3.0
+    return possible_times[isreasonable], airmass[isreasonable]
 
 
 class StarModel(TheoryModel):
@@ -114,37 +148,44 @@ class StarModel(TheoryModel):
     def deltas(self,deltas):
         self._deltas = deltas
 
+def stellar_to_detector_flux(star,detector,exp_times):
+    stellar_area = 4. * np.pi * star.stellar_radius**2
+    ratio_of_areas = detector.area / (4.* np.pi * star.distance**2)
+    det_flux = np.outer(exp_times, np.multiply(star.surface_flux,star.wave)) * stellar_area * ratio_of_areas / (const.hbar * const.c)
+    return det_flux
 
 class PhoenixModel(TheoryModel):
-    def __init__(self,alpha,z,temperature,logg,ra,dec,observatory_name,amplitude,period,velocity_drift,outdir=None):
+    def __init__(self,alpha,z,temperature,logg,target,amplitude,period,outdir=None):
         super(PhoenixModel,self).__init__()
         if outdir is None:
             self.outdir = os.path.join('data','stellar','PHOENIX')
             os.makedirs(self.outdir,exist_ok=True)
         self.temperature = temperature
-        self.z     = z
+        self.distance = coord.Distance(z=z)
         self.logg  = logg
         self.alpha = alpha
         self.wavename = download_phoenix_wave(self.outdir)
+        self.fluxname = download_phoenix_model(self,self.outdir)
+
+        grid = astropy.io.fits.open(self.fluxname)
+        self.stellar_radius = grid['PRIMARY'].header['PHXREFF'] * u.cm
+        self.surface_flux = grid['PRIMARY'].data * u.erg / (u.cm**2 * u.s)
+
         self.wave     = read_in_fits(self.wavename) * u.Angstrom
         self.color = 'red'
         # make these attributes of the phoenix model
-        self.observatory_name = observatory_name
-        self.ra, self.dec = ra, dec
-        # amplitude = np.random.uniform(a_min.value,a_max.to(a.unit).value) * a_min.unit
+        self.target = target
         self.amplitude = amplitude
         self.period    = period
-        self.velocity_drift = velocity_drift
 
-    def generate_spectra(self,epoches,times):
-        self.times = times
-        self.rvs    = get_velocity_measurements(self.times,self.amplitude,self.observatory_name,self.ra,self.dec,self.period,epoches,self.velocity_drift)
-        self.deltas = shifts(self.rvs)
-        # self.deltas = sample_deltas(epoches,self.velocity_padding)
-        fluxname = download_phoenix_model(self.alpha,self.z,self.temperature,self.logg,self.outdir)
-        self.flux = read_in_fits(fluxname)
+    def generate_spectra(self,detector,obs_times,exp_times):
+        # add integral over transmission
+        time = atime.Time([obs_times[i] + exp_times[i]/2 for i in range(len(obs_times))])
+        rvs    = get_velocity_measurements(time,self.amplitude,self.period,detector.loc,self.target)
+        deltas = shifts(rvs)
 
-        return self.flux, self.wave, self.deltas
+        obs_flux = stellar_to_detector_flux(self,detector,exp_times)
+        return obs_flux, self.wave, deltas
 
     def plot(self,ax,epoch_idx,normalize=None,nargs=[]):
         y = self.flux

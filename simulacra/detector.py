@@ -270,12 +270,16 @@ class Detector:
         data['theory'] = {}
         data['theory']['flux'] = {}
         data['theory']['wave'] = {}
-        flux_stellar, wave_stellar, deltas = self.stellar_model.generate_spectra(self,obs_times,exp_times)
+        flux_stellar, wave_stellar, deltas, rvs = self.stellar_model.generate_spectra(self,obs_times,exp_times)
+        data['data']['rvs'] = rvs
+
         data['theory']['flux'][self.stellar_model.__class__.__name__], data['theory']['wave'][self.stellar_model.__class__.__name__], data['theory']['deltas'] = flux_stellar, wave_stellar, deltas
         differences = [get_median_difference(np.log(wave_stellar.to(u.Angstrom).value))]
         print('generating spectra...')
         trans_flux, trans_wave = [], []
+        data['theory']['interpolated'] = {}
         for model in self.transmission_models:
+            data['theory']['interpolated'][model.__class__.__name__] = {}
             flux, wave = model.generate_transmission(obs_times)
             trans_flux.append(flux), trans_wave.append(wave)
             differences += [get_median_difference(np.log(wave[iii,:].to(u.Angstrom).value)) for iii in range(wave.shape[0])]
@@ -285,17 +289,21 @@ class Detector:
         # Interpolate all models and combine onto detector
         # PARALLELIZE
         ##################################################################
+        data['theory']['interpolated'][self.stellar_model.__class__.__name__] = {}
         xs = np.arange(np.log(self.lambmin.to(u.Angstrom).value),np.log(self.lambmax.to(u.Angstrom).value),step=new_step_size)
         fs = np.empty((epoches,xs.shape[0]))
         print('interpolating spline...')
         for i in range(epoches):
             print(i)
             fs[i,:] = interpolate(xs + deltas[i],np.log(wave_stellar.to(u.Angstrom).value),flux_stellar[i,:])
+            data['theory']['interpolated'][self.stellar_model.__class__.__name__]['flux'] = fs
             for j,model in enumerate(self.transmission_models):
-                fs[i,:] *= interpolate(xs,np.log(trans_wave[j][i,:].to(u.Angstrom).value),trans_flux[j][i,:])
-
-        data['theory']['total']['flux'] = fs
-        data['theory']['total']['wave'] = np.exp(xs) * u.Angstrom
+                temp_fs = interpolate(xs,np.log(trans_wave[j][i,:].to(u.Angstrom).value),trans_flux[j][i,:])
+                fs[i,:] *= temp_fs
+                data['theory']['interpolated'][model.__class__.__name__]['flux'] = temp_fs
+        data['theory']['interpolated']['total'] = {}
+        data['theory']['interpolated']['total']['flux'] = fs
+        data['theory']['interpolated']['total']['wave'] = np.exp(xs) * u.Angstrom
         # loop through stellar, tellurics, and gas cell models and generate spectra
         # stellar model needs to exist at the very least
         # interpolate, convolve, jitter, stretch, noise, signal to noise ratio, errorbars
@@ -311,6 +319,7 @@ class Detector:
         else:
             f_lsf = fs
 
+        data['theory']['lsf'] = {}
         data['theory']['lsf']['flux'] = f_lsf
 
         # Generate dataset grid & jitter & stretch
@@ -368,5 +377,5 @@ def dict_of_attr(data,obj):
         try:
             data[ele] = getattr(obj, ele)
         except AttributeError:
-            data[ele] = 'n/a'
+            pass
     return data

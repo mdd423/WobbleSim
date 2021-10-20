@@ -36,6 +36,7 @@ def from_h5(filename):
     return DetectorData(data)
 
 def convert_xy(x,y,yerr=None,units=u.Angstrom):
+    outerr = None
     if yerr is not None:
         outerr = yerr / y
     return np.log(x.to(units).value), np.log(y), outerr
@@ -69,9 +70,19 @@ def save_dict_as_h5(hf,data):
             hf.create_dataset(key,data=arr)
 
 def from_pickle(filename):
+    import pickle
     with open(filename, 'rb') as input:  # Overwrites any existing file.
         model = pickle.load(input)
         return model
+
+data_plot_settings = {'marker':'.','color':'black','alpha':0.9,'label':'Data'}
+interpolated_settings = {'marker':'.','alpha':0.3,'label':'Interpolated','markersize':3}
+truth_settings = {'marker':'o','alpha':0.4,'label':'Truth','markersize':4}
+
+gas_settings = {'color':'green'}
+star_settings = {'color':'red'}
+tellurics_settings = {'color':'blue'}
+lsf_settings = {'color':'pink'}
 
 class DetectorData:
     def __init__(self,data={}):
@@ -101,6 +112,14 @@ class DetectorData:
 
         hdul.writeto(filename)
 
+    def show_keys(data,extra=''):
+        for key in data.keys():
+            print(extra + key)
+            if isinstance(data[key],dict):
+                extra += '\t'
+                print_keys(data[key],extra)
+                extra = extra[:-1]
+
     def keys(self):
         return self.data.keys()
 
@@ -124,14 +143,7 @@ class DetectorData:
         return ax
 
     def plot_theory(self,ax,i,xy=True,units=u.Angstrom,normalize=None,nargs=[]):
-        y = self['theory']['flux_total'][i,:]
-        x = np.exp(self['theory']['x_theory']) * u.Angstrom
-        if normalize is not None:
-            y = normalize(y,*nargs)
-        if xy:
-            x, y, _ = convert_xy(x, y, None, units=units)
-        else:
-            x= x.value
+        self.plot_flux(ax,i,[''])
         ax.plot(x, y,'.',color='gray',alpha=0.4,label='Total ' + self.__class__.__name__,markersize=3)
         return ax
 
@@ -160,10 +172,28 @@ class DetectorData:
         return ax
 
     def plot_flux(self,ax,i,flux_keys,wave_keys,pargs=[],ferr_keys=None,xy=True,units=u.Angstrom,normalize=None,nargs=[]):
-        y = self[flux_keys][i,:]
-        x = self[wave_keys]
+        y_data = self
+        for key in flux_keys:
+            y_data = y_data[key]
+        if len(y_data.shape) == 1:
+            y = y_data
+        else:
+            y = y_data[i,:]
+
+        x_data = self
+        for key in wave_keys:
+            x_data = x_data[key]
+        if len(x_data.shape) == 1:
+            x = x_data
+        else:
+            x = x_data[i,:]
+
         if ferr_keys is not None:
-            yerr = self[ferr_keys][i,:]
+            err_data = self
+            for key in ferr_keys:
+                err_data = err_data[key]
+            yerr = err_data[i,:]
+
         if normalize is not None:
             y = normalize(y,*nargs)
         if xy:
@@ -171,14 +201,14 @@ class DetectorData:
         else:
             x = x.value
         if ferr_keys is None:
-            ax.plot(x, y,*pargs)
+            ax.plot(x, y, **pargs)
         else:
-            ax.errorbar(x, y, yerr,*pargs)
+            ax.errorbar(x, y, yerr,**pargs)
         return ax
 
     def plot_rvs(self,ax,units=u.km/u.s):
         now = at.Time.now()
-        ax.plot(self['data']['obs_times'] - now,self['parameters']['rvs'].to(units).value,'.k')
+        ax.plot([x - at.Time.now() for x in self['data']['obs_times']],self['data']['rvs'].to(units).value,'.k')
         return ax
 
     def plot_rvs_minus_bcs(self,ax,units=u.km/u.s):

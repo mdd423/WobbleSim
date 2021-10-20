@@ -185,7 +185,7 @@ class PhoenixModel(TheoryModel):
         deltas = shifts(rvs)
 
         obs_flux = stellar_to_detector_flux(self,detector,exp_times)
-        return obs_flux, self.wave, deltas
+        return obs_flux, self.wave, deltas, rvs
 
     def plot(self,ax,epoch_idx,normalize=None,nargs=[]):
         y = self.flux

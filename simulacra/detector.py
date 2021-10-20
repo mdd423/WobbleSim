@@ -270,24 +270,13 @@ class Detector:
         data['theory'] = {}
         data['theory']['flux'] = {}
         data['theory']['wave'] = {}
-        import matplotlib.pyplot as plt
         flux_stellar, wave_stellar, deltas = self.stellar_model.generate_spectra(self,obs_times,exp_times)
         data['theory']['flux'][self.stellar_model.__class__.__name__], data['theory']['wave'][self.stellar_model.__class__.__name__], data['theory']['deltas'] = flux_stellar, wave_stellar, deltas
-        plt.figure(figsize=(20,8))
-        plt.plot(wave_stellar.to(u.nm).value,flux_stellar[0,:],'.r')
-        plt.xlim(self.lambmin.to(u.nm).value,self.lambmax.to(u.nm).value)
-        plt.show()
         differences = [get_median_difference(np.log(wave_stellar.to(u.Angstrom).value))]
         print('generating spectra...')
         trans_flux, trans_wave = [], []
         for model in self.transmission_models:
-            print(model.lambmin)
             flux, wave = model.generate_transmission(obs_times)
-            plt.figure(figsize=(20,8))
-            plt.plot(wave[0,:].to(u.nm).value,flux[0,:])
-            plt.xlim(self.lambmin.to(u.nm).value,self.lambmax.to(u.nm).value)
-            plt.show()
-            print(wave[0,0],wave[0,-1])
             trans_flux.append(flux), trans_wave.append(wave)
             differences += [get_median_difference(np.log(wave[iii,:].to(u.Angstrom).value)) for iii in range(wave.shape[0])]
             data['theory']['flux'][model.__class__.__name__],data['theory']['wave'][model.__class__.__name__] = flux, wave

@@ -69,7 +69,6 @@ def sample_airmass(epoches):
     airmass = (2 * random.rand(epoches)) + 1
     return airmass
 
-
 class TelluricsModel(TheoryModel):
     def __init__(self):
         pass
@@ -108,42 +107,134 @@ class SkyCalcModel(TelluricsModel):
         self.wave = np.array(lambda_grid) * u.nm
         return np.array(transmission_grid), np.array(lambda_grid) * u.nm
 
-def airmass_to_angle(airmass):
-    return np.arccos(1./airmass) * 180/np.pi
-
 class TelFitModel(TelluricsModel):
-    def __init__(self,lambmin,lambmax,humidity_guess=0.4):
-        self._lambmin = lambmin
-        self._lambmax = lambmax
-        self.humidity_guess = humidity_guess
+    def __init__(self,lambmin,lambmax,airmass,loc,humidity=50.0,temperature=300*u.Kelvin,pressure=1.0e6*u.Pa,ns=100000):
+        self.lambmin = lambmin
+        self.lambmax = lambmax
+        # assert that all of these parameters that are arrays
+        # are the same length
+        # or they are just a scalar
+        self.epoches     = airmass.shape[0]
+        self.airmass     = airmass
+        self.humidity    = humidity
+        self.temperature = temperature
+        self.pressure    = pressure
+
+        # dlamb = 1e-2 * u.Angstrom
+        # self.wave = np.arange(lambmin.to(u.Angstrom).value,lambmax.to(u.Angstrom).value,step=dlamb.to(u.Angstrom).value) * u.Angstrom
+
+        self.loc = loc
+
         self.color = 'blue'
+        self.parameters = {}
 
-    def generate_transmission(self,epoches):
-        self.airmass = sample_airmass(epoches)
+    def temperature():
+        doc = "The temperature property."
+        def fget(self):
+            return self._temperature
+        def fset(self, value):
+            try:
+                temp = iter(value)
+                self._temperature = value
+            except TypeError:
+                self._temperature = value * np.ones(self.epoches)
+        def fdel(self):
+            del self._temperature
+        return locals()
+    temperature = property(**temperature())
 
-        wavestart = self.lambmin/u.nm - 2.
-        waveend = self.lambmax/u.nm + 2.
-        modeler = telfit.Modeler()
+    def humidity():
+        doc = "The humidity property."
+        def fget(self):
+            return self._humidity
+        def fset(self, value):
+            try:
+                temp = iter(value)
+                self._humidity = value
+            except TypeError:
+                self._humidity = value * np.ones(self.epoches)
+        def fdel(self):
+            del self._humidity
+        return locals()
+    humidity = property(**humidity())
 
-        # print(wavestart, waveend)
+    def pressure():
+        doc = "The pressure property."
+        def fget(self):
+            return self._pressure
+        def fset(self,value):
+            try:
+                temp = iter(value)
+                self._pressure = value
+            except TypeError:
+                self._pressure = value * np.ones(self.epoches)
+        def fdel(self):
+            del self._pressure
+        return locals()
+    pressure = property(**pressure())
 
+    def airmass():
+        doc = "The airmass property."
+        def fget(self):
+            return self._airmass
+        def fset(self, value):
+            try:
+                temp = iter(value)
+                self._airmass = value
+            except TypeError:
+                self._airmass = value * np.ones(self.epoches)
+            self._airmass = value * np.ones(self.epoches)
+        def fdel(self):
+            del self._airmass
+        return locals()
+    airmass = property(**airmass())
+
+    def epoches():
+        doc = "The epoches property."
+        def fget(self):
+            return self._epoches
+        def fset(self,value):
+            self._epoches = value
+        def fdel(self):
+            del self._epoches
+        return locals()
+    epoches = property(**epoches())
+
+    def generate_transmission(self,times):
+
+        modeler = telfit.Modeler(debug=True)
         flux = np.array([])
         wave = np.array([])
-        for a in self.airmass:
-            angle = airmass_to_angle(a)
-            model = modeler.MakeModel(humidity=self.humidity_guess,
-                         lowfreq=1e7/waveend,
-                         highfreq=1e7/wavestart,
-                         angle=angle)
-            ns = len(model.x)
+        print(self.lambmin.to(u.cm),self.lambmax.to(u.cm))
+        for i,time in enumerate(times):
+
+            angle = np.arccos(1./self.airmass[i]) * 180 * u.deg/np.pi
+            print('humidity: {}\n'.format(self.humidity[i]),
+                'pressure: {}\n'.format(self.pressure[i].to(u.hPa).value),
+                'temperature: {}\n'.format(self.temperature[i].to(u.Kelvin).value),
+                'lat: {}\n'.format(self.loc.lat.to(u.degree).value),
+                'elevation: {}\n'.format(self.loc.height.to(u.km).value),
+                'freqmin(cm-1): {}\n'.format(1.0/(self.lambmax.to(u.cm).value)),
+                'freqmax(cm-1): {}\n'.format(1.0/(self.lambmin.to(u.cm).value)),
+                'angle: {}\n'.format(angle.to(u.deg).value))
+
+            model = modeler.MakeModel(humidity=self.humidity[i],
+                         pressure=self.pressure[i].to(u.hPa).value,
+                         temperature=self.temperature[i].to(u.Kelvin).value,
+                         lat=self.loc.lat.to(u.degree).value,
+                         alt=self.loc.height.to(u.km).value,
+                         lowfreq=(1.0/self.lambmax.to(u.cm).value),
+                         highfreq=(1.0/self.lambmin.to(u.cm).value),
+                         angle=angle.to(u.deg).value)
+
+            ns   = len(model.x)
+            print(ns)
             flux = np.concatenate((flux,model.y))
             wave = np.concatenate((wave,model.x * u.nm))
 
-        self.flux = flux.reshape(epoches,ns)
-        self.wave = wave.reshape(epoches,ns)
-        # print('tel flux',self.flux.shape)
-        # print('tel wave',self.wave.shape)
-        return self.flux, self.wave
+        flux = flux.reshape(self.epoches,ns)
+        wave = wave.reshape(self.epoches,ns)
+        return flux, wave
 
     @TheoryModel.lambmin.setter
     def lambmin(self,lambmin):

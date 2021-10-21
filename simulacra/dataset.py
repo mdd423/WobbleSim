@@ -65,7 +65,12 @@ def save_dict_as_h5(hf,data):
             group = hf.create_group(key)
             save_dict_as_h5(group,data[key])
         elif isinstance(data[key], coord.EarthLocation):
+            print('saving location...{}'.format(data[key].geocentric))
             hf.create_dataset(key,data[key].geocentric)
+        elif isinstance(data[key],coord.SkyCoord):
+            group = hf.create_group(key)
+            group.create_dataset('ra',[data[key].ra.to(u.deg).value])
+            group.create_dataset('dec',[data[key].dec.to(u.deg).value])
         else:
             print(key, ' saving as string')
             dt = h5py.special_dtype(vlen=str)

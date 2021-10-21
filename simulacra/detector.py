@@ -64,11 +64,13 @@ def convolve_hermites(f_in,coeffs,center_kw,sigma,sigma_range,spacing):
     f_out = np.empty(f_in.shape)
     size = f_in.shape[0]
     n    = x.shape[0]
+
     for jj in range(f_out.shape[0]):
         kernel = hermitegaussian(coeffs[jj,:],x,sigma)
         # L1 normalize the kernel so the total flux is conserved
         kernel /= np.sum(kernel)
-        f_out[jj] = np.dot(f_in[max(0,jj-centering):min(size,jj+n-centering)], kernel[max(0,centering-jj):min(n,size-jj+centering)])
+        f_out[jj] = np.dot(f_in[max(0,jj-centering):min(size,jj+n-centering)]\
+                                    ,kernel[max(0,centering-jj):min(n,size-jj+centering)])
     return f_out
 
 def interpolate(x,xs,ys):
@@ -101,22 +103,35 @@ def generate_errors(f,snr):
     f_err = np.empty(f.shape)
     for i in range(f_err.shape[0]):
         for j in range(f_err.shape[1]):
-            error = random.normal(scale=f[i,j]/snr[i,j])
-            # print(error)
-            f_err[i,j] = error
+            f_err[i,j] = f[i,j]/snr[i,j]
     return f_err
 
 def average_difference(x):
     return np.mean([t - s for s, t in zip(x, x[1:])])
 
+def add_noise(f_exp,snr_grid):
+    f_readout = np.empty(f_exp.shape)
+    for i in range(f_exp.shape[0]):
+        print('snr {}: {}'.format(i,np.median(snr_grid[i,:])))
+        for j in range(f_exp.shape[1]):
+            f_readout[i,j] = f_exp[i,j] * random.normal(1,1./snr_grid[i,j])
+    return f_readout
+
 def signal_to_noise_ratio(detector,flux,exp_times):
+    xs,ys = np.where(flux < 0)
+    for x,y in zip(xs,ys):
+        flux[x,y] = 0
+
     snr = np.empty(flux.shape)
     for i in range(snr.shape[0]):
         for j in range(snr.shape[1]):
+            if j % 500 == 0:
+                print(detector.read_noise[j], (detector.dark_current[j] * exp_times[i]).to(1), detector.ccd_eff[j] * flux[i,j])
             # implicitly flux is already dependent on exposure time
             snr[i,j] = detector.ccd_eff[j] * flux[i,j] \
             / np.sqrt(detector.read_noise[j] + detector.dark_current[j] * exp_times[i] + detector.ccd_eff[j] * flux[i,j])
     return snr
+
 
 class Detector:
     def __init__(self,stellar_model,resolution,loc,area,wave_grid,dark_current,read_noise,ccd_eff,epsilon=0.0,gamma=1.0,w=0.0,a=4):
@@ -269,39 +284,41 @@ class Detector:
         data['data']['epoches']   = obs_times.shape[0]
         epoches = obs_times.shape[0]
         data['theory'] = {}
-        data['theory']['flux'] = {}
-        data['theory']['wave'] = {}
+        data['theory']['star'] = {}
         flux_stellar, wave_stellar, deltas, rvs = self.stellar_model.generate_spectra(self,obs_times,exp_times)
+
         data['data']['rvs'] = rvs
 
-        data['theory']['flux'][self.stellar_model.__class__.__name__], data['theory']['wave'][self.stellar_model.__class__.__name__], data['theory']['deltas'] = flux_stellar, wave_stellar, deltas
+        data['theory']['star']['flux'], data['theory']['star']['wave'], data['theory']['star']['deltas'] = flux_stellar, wave_stellar, deltas
         differences = [get_median_difference(np.log(wave_stellar.to(u.Angstrom).value))]
         print('generating spectra...')
         trans_flux, trans_wave = [], []
         data['theory']['interpolated'] = {}
         for model in self.transmission_models:
-            data['theory']['interpolated'][model.__class__.__name__] = {}
-            flux, wave = model.generate_transmission(obs_times)
+            data['theory']['interpolated'][model._name] = {}
+            data['theory'][model._name] = {}
+            flux, wave = model.generate_transmission(self.stellar_model,self,obs_times,exp_times)
             trans_flux.append(flux), trans_wave.append(wave)
             differences += [get_median_difference(np.log(wave[iii,:].to(u.Angstrom).value)) for iii in range(wave.shape[0])]
-            data['theory']['flux'][model.__class__.__name__],data['theory']['wave'][model.__class__.__name__] = flux, wave
+            data['theory'][model._name]['flux'],data['theory'][model._name]['wave'] = flux, wave
             print(model, differences)
         new_step_size = min(differences)
         # Interpolate all models and combine onto detector
         # PARALLELIZE
         ##################################################################
-        data['theory']['interpolated'][self.stellar_model.__class__.__name__] = {}
+
+        data['theory']['interpolated']['star'] = {}
         xs = np.arange(np.log(self.lambmin.to(u.Angstrom).value),np.log(self.lambmax.to(u.Angstrom).value),step=new_step_size)
         fs = np.empty((epoches,xs.shape[0]))
         print('interpolating spline...')
         for i in range(epoches):
             print(i)
             fs[i,:] = interpolate(xs + deltas[i],np.log(wave_stellar.to(u.Angstrom).value),flux_stellar[i,:])
-            data['theory']['interpolated'][self.stellar_model.__class__.__name__]['flux'] = fs
+            data['theory']['interpolated']['star']['flux'] = fs
             for j,model in enumerate(self.transmission_models):
                 temp_fs = interpolate(xs,np.log(trans_wave[j][i,:].to(u.Angstrom).value),trans_flux[j][i,:])
                 fs[i,:] *= temp_fs
-                data['theory']['interpolated'][model.__class__.__name__]['flux'] = temp_fs
+                data['theory']['interpolated'][model._name]['flux'] = temp_fs
         data['theory']['interpolated']['total'] = {}
         data['theory']['interpolated']['total']['flux'] = fs
         data['theory']['interpolated']['total']['wave'] = np.exp(xs) * u.Angstrom
@@ -335,18 +352,15 @@ class Detector:
         ##################################################
         snr_grid  = np.empty(x_hat.shape)
         f_exp     = np.empty(x_hat.shape)
-        f_readout = np.empty(x_hat.shape)
         print('interpolating lanczos...')
         for i in range(f_exp.shape[0]):
-            print(i)
             f_exp[i,:] = lanczos_interpolation(x_hat[i,:],xs,f_lsf[i,:],dx=new_step_size,a=self.a)
+            print('f_exp {}: {}'.format(i,np.median(f_exp[i,:])))
 
-        print('adding noise...')
+        print('generating signal to noise ratios...')
         snr_grid = signal_to_noise_ratio(self,f_exp,exp_times)
-        for i in range(f_exp.shape[0]):
-            print(i)
-            for j in range(f_exp.shape[1]):
-                f_readout[i,j] = f_exp[i,j] * random.normal(1,1./snr_grid[i,j])
+        print('adding noise...')
+        f_readout = add_noise(f_exp,snr_grid)
 
         data['data']['snr'] = snr_grid
         data['data']['flux_expected'] = f_exp

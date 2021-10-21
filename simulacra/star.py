@@ -102,7 +102,7 @@ def get_velocity_measurements(times,amplitude,period,loc,target):
     rvs  = berv + binary_system_velocity(times,amplitude,period)
     return rvs
 
-def get_night_grid(loc,tstart,tend):
+def get_night_grid(loc,tstart,tend,steps_per_night=10):
     from astroplan import Observer
     observer = Observer(location=loc)
     days = int((tend - tstart) / u.day)
@@ -118,7 +118,7 @@ def get_night_grid(loc,tstart,tend):
         nighttime = (sunrise[i+1]-sunset[i])
         outarr = np.concatenate((outarr,
                                 sunset[i] + \
-                                np.linspace(0,nighttime.value)))
+                                np.linspace(0,nighttime.value,steps_per_night)))
     return outarr
 
 def get_realistic_times(target,loc,all_times):
@@ -151,7 +151,7 @@ class StarModel(TheoryModel):
 def stellar_to_detector_flux(star,detector,exp_times):
     stellar_area = 4. * np.pi * star.stellar_radius**2
     ratio_of_areas = detector.area / (4.* np.pi * star.distance**2)
-    det_flux = np.outer(exp_times, np.multiply(star.surface_flux,star.wave)) * stellar_area * ratio_of_areas / (const.hbar * const.c)
+    det_flux = np.outer(exp_times, np.multiply(star.surface_flux.to(u.photon/u.s / u.m**3, u.spectral_density(star.wave_difference)), star.wave)) * stellar_area * ratio_of_areas
     return det_flux
 
 class PhoenixModel(TheoryModel):
@@ -169,14 +169,28 @@ class PhoenixModel(TheoryModel):
 
         grid = astropy.io.fits.open(self.fluxname)
         self.stellar_radius = grid['PRIMARY'].header['PHXREFF'] * u.cm
-        self.surface_flux = grid['PRIMARY'].data * u.erg / (u.cm**2 * u.s)
+        self.surface_flux = grid['PRIMARY'].data * u.erg / u.cm**3 / u.s
+        print(self.surface_flux.unit)
 
         self.wave     = read_in_fits(self.wavename) * u.Angstrom
-        self.color = 'red'
+        import matplotlib.pyplot as plt
+        plt.figure(figsize=(20,8))
+        plt.plot(self.wave.to(u.Angstrom),self.surface_flux.to(u.Jy, u.spectral_density(self.wave)).value,'red')
+        plt.xlim(5900,5910)
+        plt.show()
+
         # make these attributes of the phoenix model
         self.target = target
         self.amplitude = amplitude
         self.period    = period
+
+    def wave_difference():
+        doc = "The wave_difference property."
+        def fget(self):
+            diff = 0.1 * u.Angstrom * np.ones(self.wave.shape)
+            return diff
+        return locals()
+    wave_difference = property(**wave_difference())
 
     def generate_spectra(self,detector,obs_times,exp_times):
         # add integral over transmission

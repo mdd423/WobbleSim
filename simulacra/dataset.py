@@ -84,6 +84,15 @@ star_settings = {'color':'red'}
 tellurics_settings = {'color':'blue'}
 lsf_settings = {'color':'pink'}
 
+def print_keys(data,extra=''):
+    for key in data.keys():
+        print(extra + '{}: {}'.format(key, type(data[key])))
+        if isinstance(data[key],dict):
+            tab = '--'
+            extra += tab
+            print_keys(data[key],extra)
+            extra = extra[:-len(tab)]
+
 class DetectorData:
     def __init__(self,data={}):
         self.data = data
@@ -111,14 +120,6 @@ class DetectorData:
                 hdul.append(image_hdu)
 
         hdul.writeto(filename)
-
-    def show_keys(data,extra=''):
-        for key in data.keys():
-            print(extra + key)
-            if isinstance(data[key],dict):
-                extra += '\t'
-                print_keys(data[key],extra)
-                extra = extra[:-1]
 
     def keys(self):
         return self.data.keys()
@@ -208,7 +209,9 @@ class DetectorData:
 
     def plot_rvs(self,ax,units=u.km/u.s):
         now = at.Time.now()
-        ax.plot([x - at.Time.now() for x in self['data']['obs_times']],self['data']['rvs'].to(units).value,'.k')
+        time = np.array([(x - at.Time.now()).value for x in self['data']['obs_times']],dtype=float)
+        rvs = self['data']['rvs'].to(units).value
+        ax.plot(time,rvs,'.k')
         return ax
 
     def plot_rvs_minus_bcs(self,ax,units=u.km/u.s):

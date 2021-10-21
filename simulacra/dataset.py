@@ -1,6 +1,7 @@
 import numpy as np
 import astropy.units as u
 import astropy.time as at
+import astropy.coordinates as coord
 import scipy.interpolate as interp
 import scipy.ndimage as img
 import scipy.sparse
@@ -63,6 +64,8 @@ def save_dict_as_h5(hf,data):
         elif isinstance(data[key], dict):
             group = hf.create_group(key)
             save_dict_as_h5(group,data[key])
+        elif isinstance(data[key], coord.EarthLocation):
+            hf.create_dataset(key,data[key].geocentric)
         else:
             print(key, ' saving as string')
             dt = h5py.special_dtype(vlen=str)

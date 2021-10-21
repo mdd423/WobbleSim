@@ -1,7 +1,9 @@
 from simulacra.theory import TheoryModel
 import numpy.random as random
 import astropy.units as u
+import astropy.coordinates as coord
 import telfit
+import logging
 import numpy as np
 
 def get_skycalc_defaults(inputFilename,almFilename,isVerbose=False):
@@ -107,15 +109,16 @@ class SkyCalcModel(TelluricsModel):
         self.wave = np.array(lambda_grid) * u.nm
         return np.array(transmission_grid), np.array(lambda_grid) * u.nm
 
+
 class TelFitModel(TelluricsModel):
-    def __init__(self,lambmin,lambmax,airmass,loc,humidity=50.0,temperature=300*u.Kelvin,pressure=1.0e6*u.Pa,ns=100000):
+    def __init__(self,lambmin,lambmax,loc,humidity=50.0,temperature=300*u.Kelvin,pressure=1.0e6*u.Pa,ns=100000):
+        self._name = 'tellurics'
         self.lambmin = lambmin
         self.lambmax = lambmax
         # assert that all of these parameters that are arrays
         # are the same length
         # or they are just a scalar
-        self.epoches     = airmass.shape[0]
-        self.airmass     = airmass
+        self.epoches     = None
         self.humidity    = humidity
         self.temperature = temperature
         self.pressure    = pressure
@@ -125,19 +128,16 @@ class TelFitModel(TelluricsModel):
 
         self.loc = loc
 
-        self.color = 'blue'
-        self.parameters = {}
-
     def temperature():
         doc = "The temperature property."
         def fget(self):
-            return self._temperature
-        def fset(self, value):
             try:
-                temp = iter(value)
-                self._temperature = value
+                temp = iter(self._temperature)
+                return self._temperature
             except TypeError:
-                self._temperature = value * np.ones(self.epoches)
+                return self._temperature * np.ones(self.epoches)
+        def fset(self, value):
+            self._temperature = value * np.ones(self.epoches)
         def fdel(self):
             del self._temperature
         return locals()
@@ -146,13 +146,13 @@ class TelFitModel(TelluricsModel):
     def humidity():
         doc = "The humidity property."
         def fget(self):
-            return self._humidity
-        def fset(self, value):
             try:
-                temp = iter(value)
-                self._humidity = value
+                temp = iter(self._humidity)
+                return self._humidity
             except TypeError:
-                self._humidity = value * np.ones(self.epoches)
+                return self._humidity * np.ones(self.epoches)
+        def fset(self, value):
+            self._humidity = value
         def fdel(self):
             del self._humidity
         return locals()
@@ -161,33 +161,17 @@ class TelFitModel(TelluricsModel):
     def pressure():
         doc = "The pressure property."
         def fget(self):
-            return self._pressure
-        def fset(self,value):
             try:
-                temp = iter(value)
-                self._pressure = value
+                temp = iter(self._pressure)
+                return self._pressure
             except TypeError:
-                self._pressure = value * np.ones(self.epoches)
+                return self._pressure * np.ones(self.epoches)
+        def fset(self,value):
+            self._pressure = value
         def fdel(self):
             del self._pressure
         return locals()
     pressure = property(**pressure())
-
-    def airmass():
-        doc = "The airmass property."
-        def fget(self):
-            return self._airmass
-        def fset(self, value):
-            try:
-                temp = iter(value)
-                self._airmass = value
-            except TypeError:
-                self._airmass = value * np.ones(self.epoches)
-            self._airmass = value * np.ones(self.epoches)
-        def fdel(self):
-            del self._airmass
-        return locals()
-    airmass = property(**airmass())
 
     def epoches():
         doc = "The epoches property."
@@ -200,15 +184,20 @@ class TelFitModel(TelluricsModel):
         return locals()
     epoches = property(**epoches())
 
-    def generate_transmission(self,times):
+    def generate_transmission(self,star,detector,obs_times,exp_times):
+        telescope_frame = coord.AltAz(obstime=obs_times,location=detector.loc)
+        secz = np.array(star.target.transform_to(telescope_frame).secz)
+        if self.epoches != obs_times.shape[0]:
+            logging.warning('tellurics epoches not the same as obs times\nresetting...')
+            self.epoches = obs_times.shape[0]
 
         modeler = telfit.Modeler(debug=True)
         flux = np.array([])
         wave = np.array([])
-        print(self.lambmin.to(u.cm),self.lambmax.to(u.cm))
-        for i,time in enumerate(times):
+        # print(self.lambmin.to(u.cm),self.lambmax.to(u.cm))
+        for i,time in enumerate(obs_times):
 
-            angle = np.arccos(1./self.airmass[i]) * 180 * u.deg/np.pi
+            angle = np.arccos(1./secz[i]) * 180 * u.deg/np.pi
             print('humidity: {}\n'.format(self.humidity[i]),
                 'pressure: {}\n'.format(self.pressure[i].to(u.hPa).value),
                 'temperature: {}\n'.format(self.temperature[i].to(u.Kelvin).value),
@@ -228,7 +217,6 @@ class TelFitModel(TelluricsModel):
                          angle=angle.to(u.deg).value)
 
             ns   = len(model.x)
-            print(ns)
             flux = np.concatenate((flux,model.y))
             wave = np.concatenate((wave,model.x * u.nm))
 

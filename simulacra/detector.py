@@ -315,6 +315,7 @@ class Detector:
             print(i)
             fs[i,:] = interpolate(xs + deltas[i],np.log(wave_stellar.to(u.Angstrom).value),flux_stellar[i,:])
             data['theory']['interpolated']['star']['flux'] = fs
+            data['theory']['interpolated']['star']['wave'] = np.exp(xs + deltas[i]) * u.Angstrom
             for j,model in enumerate(self.transmission_models):
                 temp_fs = interpolate(xs,np.log(trans_wave[j][i,:].to(u.Angstrom).value),trans_flux[j][i,:])
                 fs[i,:] *= temp_fs
@@ -375,15 +376,15 @@ class Detector:
         # Pack Output into Dictionary
         ###################################################
         data['parameters'] = {}
-        data['parameters'][self.stellar_model.__class__.__name__] = {}
-        data['parameters'][self.stellar_model.__class__.__name__] = dict_of_attr(data['parameters'][self.stellar_model.__class__.__name__],self.stellar_model)
+        data['parameters']['star'] = {}
+        data['parameters']['star'] = dict_of_attr(data['parameters']['star'],self.stellar_model)
 
         data['parameters']['detector'] = {}
         data['parameters']['detector'] = dict_of_attr(data['parameters']['detector'],self)
 
         for model in self.transmission_models:
-            data['parameters'][model.__class__.__name__] = {}
-            data['parameters'][model.__class__.__name__] = dict_of_attr(data['parameters'][model.__class__.__name__],model)
+            data['parameters'][model._name] = {}
+            data['parameters'][model._name] = dict_of_attr(data['parameters'][model._name],model)
         return data
 
 def dict_of_attr(data,obj):

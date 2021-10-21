@@ -114,7 +114,7 @@ def add_noise(f_exp,snr_grid):
     for i in range(f_exp.shape[0]):
         print('snr {}: {}'.format(i,np.median(snr_grid[i,:])))
         for j in range(f_exp.shape[1]):
-            f_readout[i,j] = f_exp[i,j] * random.normal(1,1./snr_grid[i,j])
+            f_readout[i,j] = f_exp[i,j] + random.normal(0.0,1./snr_grid[i,j])
     return f_readout
 
 def signal_to_noise_ratio(detector,flux,exp_times):
@@ -134,7 +134,7 @@ def signal_to_noise_ratio(detector,flux,exp_times):
 
 
 class Detector:
-    def __init__(self,stellar_model,resolution,loc,area,wave_grid,dark_current,read_noise,ccd_eff,epsilon=0.0,gamma=1.0,w=0.0,a=4):
+    def __init__(self,stellar_model,resolution,loc,area,wave_grid,dark_current,read_noise,ccd_eff,through_put=0.2,epsilon=0.0,gamma=1.0,w=0.0,a=4):
         '''Detector model that simulates spectra from star given resolution...
 
         Detector takes on a given theoretical `stellar_model`, `resolution`, with
@@ -174,6 +174,7 @@ class Detector:
         self.dark_current = dark_current
         self.read_noise   = read_noise
         self.ccd_eff      = ccd_eff
+        self.through_put  = through_put
         self.area = area
         self.loc  = loc
         # LSF properties

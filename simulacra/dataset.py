@@ -197,6 +197,7 @@ class DetectorData:
         else:
             x = x_data[i,:]
 
+        yerr = 0.0
         if ferr_keys is not None:
             err_data = self
             for key in ferr_keys:
@@ -204,7 +205,7 @@ class DetectorData:
             yerr = err_data[i,:]
 
         if normalize is not None:
-            y = normalize(y,*nargs)
+            y, yerr = normalize(y,yerr,*nargs)
         if xy:
             x, y, _ = convert_xy(x, y, None, units=units)
         else:

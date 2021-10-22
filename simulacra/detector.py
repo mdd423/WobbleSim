@@ -205,7 +205,9 @@ class Detector:
             minimum = self.checkmin()
             maximum = self.checkmax()
             if minimum >= maximum:
-                logging.error('no overlap between selected wave grids')
+                logging.error('no overlap between selected wave grids\nmodel cannot be added')
+                self.transmission_models.pop()
+                return
             self._wave_grid = new_grid[np.multiply(new_grid <= maximum, new_grid >= minimum,dtype=bool)]
             if np.min(new_grid) < minimum:
                 print("wave_grid min -> {}".format(minimum))
@@ -313,20 +315,13 @@ class Detector:
         xs = np.arange(np.log(self.lambmin.to(u.Angstrom).value),np.log(self.lambmax.to(u.Angstrom).value),step=new_step_size)
         # fs = np.empty((epoches,xs.shape[0]))
         print('interpolating spline...')
-        import matplotlib.pyplot as plt
-        fig, axes = plt.subplots(epoches,figsize=(20,5*epoches),sharex=True,sharey=True)
-
         stellar_arr = np.empty((epoches,xs.shape[0]))
         trans_arrs  = np.empty((len(self.transmission_models),epoches,xs.shape[0]))
         for i in range(epoches):
             print(i)
             stellar_arr[i,:] = interpolate(xs + deltas[i],np.log(wave_stellar.to(u.Angstrom).value),flux_stellar[i,:])
-            axes[i].set_xlim(np.log(9250),np.log(9265))
-            axes[i].plot(xs,stellar_arr[i,:],'ro',alpha=0.4)
             for j,model in enumerate(self.transmission_models):
                 trans_arrs[j,i,:] = interpolate(xs,np.log(trans_wave[j][i,:].to(u.Angstrom).value),trans_flux[j][i,:])
-        plt.show()
-
         print('combining grids...')
         data['theory']['interpolated']['star']['flux'] = stellar_arr
         fs = stellar_arr.copy()

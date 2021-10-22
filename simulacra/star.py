@@ -156,19 +156,20 @@ def stellar_to_detector_flux(star,detector,exp_times):
     print("ratios: {:.2e}".format(ratio_of_areas.to(1).value))
     print("exposures: {:.2e}".format(exp_times[0].to(u.s).value))
     print("star area: {:.2e}".format(stellar_area.to(u.m**2).value))
-    det_flux = detector.through_put * np.outer(exp_times, np.multiply(star.surface_flux.to(u.photon/u.s / u.m**3, u.spectral_density(star.wave)), star.wave_difference)) * stellar_area * ratio_of_areas
+    det_flux = detector.through_put * np.outer(exp_times, np.multiply(star.surface_flux.to(u.photon/u.s / u.m**3, \
+                            u.spectral_density(star.wave)) \
+                            , star.wave_difference)) * stellar_area * ratio_of_areas
     print("det flux: {:.2e}".format(np.mean(det_flux).to(u.ph).value))
     return det_flux.to(u.ph)
 
 class PhoenixModel(TheoryModel):
-    def __init__(self,alpha,distance,z,temperature,logg,target,amplitude,period,outdir=None):
+    def __init__(self,distance,alpha,z,temperature,logg,target,amplitude,period,outdir=None):
         super(PhoenixModel,self).__init__()
         if outdir is None:
             self.outdir = os.path.join('data','stellar','PHOENIX')
             os.makedirs(self.outdir,exist_ok=True)
         self.temperature = temperature
         self.z = z
-        self.distance = coord.Distance(distance)
         self.logg  = logg
         self.alpha = alpha
         self.wavename = download_phoenix_wave(self.outdir)
@@ -177,16 +178,10 @@ class PhoenixModel(TheoryModel):
         grid = astropy.io.fits.open(self.fluxname)
         self.stellar_radius = grid['PRIMARY'].header['PHXREFF'] * u.cm
         self.surface_flux = grid['PRIMARY'].data * u.erg / u.cm**3 / u.s
-        print(self.surface_flux.unit)
-
         self.wave     = read_in_fits(self.wavename) * u.Angstrom
-        import matplotlib.pyplot as plt
-        plt.figure(figsize=(20,8))
-        plt.plot(self.wave.to(u.Angstrom),self.surface_flux.to(u.Jy, u.spectral_density(self.wave)).value,'red')
-        plt.xlim(5900,5910)
-        plt.show()
 
         # make these attributes of the phoenix model
+        self.distance = coord.Distance(distance)
         self.target = target
         self.amplitude = amplitude
         self.period    = period

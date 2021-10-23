@@ -138,48 +138,6 @@ class DetectorData:
     def __setitem__(self,key,value):
         self.data[key] = value
 
-    def plot_data(self,ax,i,xy=True,units=u.Angstrom,normalize=None,nargs=[]):
-        y = self['data']['flux'][i,:]
-        x = self['data']['wave']
-        yerr = self['data']['ferr'][i,:]
-        if normalize is not None:
-            y = normalize(y,*nargs)
-        if xy:
-            x, y, yerr = convert_xy(x, y, yerr, units=units)
-        else:
-            x = x.value
-        ax.errorbar(x,y,yerr,xerr=None,fmt='.k',alpha=0.9,label='Data')
-        return ax
-
-    def plot_theory(self,ax,i,xy=True,units=u.Angstrom,normalize=None,nargs=[]):
-        self.plot_flux(ax,i,[''])
-        ax.plot(x, y,'.',color='gray',alpha=0.4,label='Total ' + self.__class__.__name__,markersize=3)
-        return ax
-
-    def plot_lsf(self,ax,i,xy=True,units=u.Angstrom,normalize=None,nargs=[]):
-        y = self['theory']['flux_lsf'][i,:]
-        x = np.exp(self['theory']['x_theory']) * u.Angstrom
-        if normalize is not None:
-            y = normalize(y,*nargs)
-        if xy:
-            x, y, _ = convert_xy(x, y, None, units=units)
-        else:
-            x = x.value
-        ax.plot(x, y,'.',color='magenta',alpha=0.4,label='LSF ' + self.__class__.__name__,markersize=3)
-        return ax
-
-    def plot_star(self,ax,i,xy=True,units=u.Angstrom,normalize=None,nargs=[]):
-        y = self['theory']['flux_star'][i,:]
-        x = np.exp(self['theory']['x_theory']) * u.Angstrom
-        if normalize is not None:
-            y = normalize(y,*nargs)
-        if xy:
-            x, y, _ = convert_xy(x, y, None, units=units)
-        else:
-            x = x.value
-        ax.plot(x, y,'.',color='red',alpha=0.4,label='LSF ' + self.__class__.__name__,markersize=3)
-        return ax
-
     def plot_flux(self,ax,i,flux_keys,wave_keys,pargs=[],ferr_keys=None,xy=True,units=u.Angstrom,normalize=None,nargs=[]):
         y_data = self
         for key in flux_keys:
@@ -206,14 +164,41 @@ class DetectorData:
 
         if normalize is not None:
             y, yerr = normalize(y,yerr,*nargs)
-        if xy:
-            x, y, _ = convert_xy(x, y, None, units=units)
+        if 'x' in xy:
+            x = np.log(x.to(u.Angstrom).value)
+            # x, y, _ = convert_xy(x, y, None, units=units)
         else:
             x = x.value
+        if 'y' in xy:
+            y, yerr = np.log(y), yerr/y
         if ferr_keys is None:
             ax.plot(x, y, **pargs)
         else:
             ax.errorbar(x, y, yerr,**pargs)
+        return ax
+
+    def plot_data(self,ax,i,xy=True,units=u.Angstrom,normalize=None,nargs=[]):
+        self.plot_flux(ax,i,['data','flux'],['data','wave'],ferr_keys=['data','ferr'],pargs=data_plot_settings,xy=xy,units=units,normalize=normalize,nargs=nargs)
+        return ax
+
+    def plot_theory(self,ax,i,xy=True,units=u.Angstrom,normalize=None,nargs=[]):
+        self.plot_flux(ax,i,['theory','interpolated','total','flux'],['theory','interpolated','total','wave'],xy=xy,pargs={'color':'gray',**interpolated_settings},units=units,normalize=normalize,nargs=nargs)
+        return ax
+
+    def plot_lsf(self,ax,i,xy=True,units=u.Angstrom,normalize=None,nargs=[]):
+        self.plot_flux(ax,i,['theory','lsf','flux'],['theory','interpolated','total','wave'],xy=xy,pargs={'color':'pink',**interpolated_settings},units=units,normalize=normalize,nargs=nargs)
+        return ax
+
+    def plot_star(self,ax,i,xy=True,units=u.Angstrom,normalize=None,nargs=[]):
+        self.plot_flux(ax,i,['theory','interpolated','star','flux'],['theory','interpolated','total','wave'],pargs={**star_settings,**interpolated_settings},xy=xy,units=units,normalize=normalize,nargs=nargs)
+        return ax
+
+    def plot_gas(self,ax,i,xy=True,units=u.Angstrom,normalize=None,nargs=[]):
+        self.plot_flux(ax,i,['theory','interpolated','gascell','flux'],['theory','interpolated','total','wave'],xy=xy,units=units,pargs={**gas_settings,**interpolated_settings},normalize=normalize,nargs=nargs)
+        return ax
+
+    def plot_tellurics(self,ax,i,xy=True,units=u.Angstrom,normalize=None,nargs=[]):
+        self.plot_flux(ax,i,['theory','interpolated','tellurics','flux'],['theory','interpolated','total','wave'],xy=xy,pargs={**tellurics_settings,**interpolated_settings},normalize=normalize,nargs=nargs)
         return ax
 
     def plot_rvs(self,ax,units=u.km/u.s):

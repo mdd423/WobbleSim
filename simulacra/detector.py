@@ -5,6 +5,7 @@ import scipy.interpolate as interp
 import scipy.ndimage as img
 import scipy.sparse
 import numpy.random as random
+import logging
 
 from simulacra.dataset import DetectorData
 
@@ -204,6 +205,10 @@ class Detector:
         def fset(self, new_grid):
             minimum = self.checkmin()
             maximum = self.checkmax()
+            if minimum >= maximum:
+                logging.error('no overlap between selected wave grids\nmodel cannot be added')
+                self.transmission_models.pop()
+                return
             self._wave_grid = new_grid[np.multiply(new_grid <= maximum, new_grid >= minimum,dtype=bool)]
             if np.min(new_grid) < minimum:
                 print("wave_grid min -> {}".format(minimum))
@@ -288,9 +293,8 @@ class Detector:
         data['theory']['star'] = {}
         flux_stellar, wave_stellar, deltas, rvs = self.stellar_model.generate_spectra(self,obs_times,exp_times)
 
-        data['data']['rvs'] = rvs
-
-        data['theory']['star']['flux'], data['theory']['star']['wave'], data['theory']['star']['deltas'] = flux_stellar, wave_stellar, deltas
+        data['data']['rvs'], data['theory']['star']['deltas'] = rvs, deltas
+        data['theory']['star']['flux'], data['theory']['star']['wave'] = flux_stellar, wave_stellar
         differences = [get_median_difference(np.log(wave_stellar.to(u.Angstrom).value))]
         print('generating spectra...')
         trans_flux, trans_wave = [], []
@@ -310,17 +314,21 @@ class Detector:
 
         data['theory']['interpolated']['star'] = {}
         xs = np.arange(np.log(self.lambmin.to(u.Angstrom).value),np.log(self.lambmax.to(u.Angstrom).value),step=new_step_size)
-        fs = np.empty((epoches,xs.shape[0]))
+        # fs = np.empty((epoches,xs.shape[0]))
         print('interpolating spline...')
+        stellar_arr = np.empty((epoches,xs.shape[0]))
+        trans_arrs  = np.empty((len(self.transmission_models),epoches,xs.shape[0]))
         for i in range(epoches):
             print(i)
-            fs[i,:] = interpolate(xs + deltas[i],np.log(wave_stellar.to(u.Angstrom).value),flux_stellar[i,:])
-            data['theory']['interpolated']['star']['flux'] = fs
-            data['theory']['interpolated']['star']['wave'] = np.exp(xs + deltas[i]) * u.Angstrom
+            stellar_arr[i,:] = interpolate(xs + deltas[i],np.log(wave_stellar.to(u.Angstrom).value),flux_stellar[i,:])
             for j,model in enumerate(self.transmission_models):
-                temp_fs = interpolate(xs,np.log(trans_wave[j][i,:].to(u.Angstrom).value),trans_flux[j][i,:])
-                fs[i,:] *= temp_fs
-                data['theory']['interpolated'][model._name]['flux'] = temp_fs
+                trans_arrs[j,i,:] = interpolate(xs,np.log(trans_wave[j][i,:].to(u.Angstrom).value),trans_flux[j][i,:])
+        print('combining grids...')
+        data['theory']['interpolated']['star']['flux'] = stellar_arr
+        fs = stellar_arr.copy()
+        for j,model in enumerate(self.transmission_models):
+            fs *= trans_arrs[j,:,:]
+            data['theory']['interpolated'][model._name]['flux'] = trans_arrs[j,:,:]
         data['theory']['interpolated']['total'] = {}
         data['theory']['interpolated']['total']['flux'] = fs
         data['theory']['interpolated']['total']['wave'] = np.exp(xs) * u.Angstrom

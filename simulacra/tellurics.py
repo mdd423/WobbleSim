@@ -111,7 +111,7 @@ class SkyCalcModel(TelluricsModel):
 
 
 class TelFitModel(TelluricsModel):
-    def __init__(self,lambmin,lambmax,loc,humidity=50.0,temperature=300*u.Kelvin,pressure=1.0e6*u.Pa,ns=100000):
+    def __init__(self,lambmin,lambmax,loc,humidity=50.0,temperature=300*u.Kelvin,pressure=1.0e6*u.Pa):
         self._name = 'tellurics'
         self.lambmin = lambmin
         self.lambmax = lambmax
@@ -119,59 +119,99 @@ class TelFitModel(TelluricsModel):
         # are the same length
         # or they are just a scalar
         self.epoches     = None
-        self.humidity    = humidity
         self.temperature = temperature
         self.pressure    = pressure
+        self.humidity    = humidity
+
 
         # dlamb = 1e-2 * u.Angstrom
         # self.wave = np.arange(lambmin.to(u.Angstrom).value,lambmax.to(u.Angstrom).value,step=dlamb.to(u.Angstrom).value) * u.Angstrom
 
         self.loc = loc
 
+    def check_shape_type(self,value,unit=None):
+        if isinstance(value, u.Quantity):
+            if value.unit.physical_type in unit.physical_type:
+                if self.epoches:
+                    if value.shape[0] == self.epoches:
+                        return value
+                    elif len(value.shape) == 0:
+                        return value * np.ones(self.epoches)
+                    else:
+                        logging.warn('input not the correct size {}'.format(self.epoches))
+                else:
+                    if len(value.shape) == 0:
+                        return value
+                    else:
+                        self.epoches = value.shape[0]
+                        return value
+        logging.warn('type or physical type are not correct')
+        return None
+
     def temperature():
         doc = "The temperature property."
         def fget(self):
-            try:
-                temp = iter(self._temperature)
-                return self._temperature
-            except TypeError:
-                return self._temperature * np.ones(self.epoches)
+            return self._temperature
         def fset(self, value):
-            self._temperature = value * np.ones(self.epoches)
+            out = self.check_shape_type(value,unit=u.Kelvin)
+            if out is not None:
+                self._temperature = out
+            else:
+                print('temperature left as default {}'.format(self.temperature))
+
         def fdel(self):
             del self._temperature
         return locals()
     temperature = property(**temperature())
 
+    def pressure():
+        doc = "The pressure property."
+        def fget(self):
+            return self._pressure
+        def fset(self,value):
+            out = self.check_shape_type(value,unit=u.Pa)
+            if out is not None:
+                self._pressure = out
+            else:
+                print('pressure left as default {}'.format(self.pressure))
+
+        def fdel(self):
+            del self._pressure
+        return locals()
+    pressure = property(**pressure())
+
     def humidity():
         doc = "The humidity property."
         def fget(self):
-            try:
-                temp = iter(self._humidity)
-                return self._humidity
-            except TypeError:
-                return self._humidity * np.ones(self.epoches)
+            return self._humidity
         def fset(self, value):
-            self._humidity = value
+            if isinstance(value, float):
+                self._humidity = value * np.ones(self.epoches)
+            elif isinstance(value, np.ndarray):
+                if value.shape[0] == self.epoches:
+                    self._humidity = value
+                else:
+                    logging.warn('ndarray incorrect shape')
+            else:
+                logging.warn('incorrect type: must be float or ndarray')
+
         def fdel(self):
             del self._humidity
         return locals()
     humidity = property(**humidity())
 
-    def pressure():
-        doc = "The pressure property."
-        def fget(self):
-            try:
-                temp = iter(self._pressure)
-                return self._pressure
-            except TypeError:
-                return self._pressure * np.ones(self.epoches)
-        def fset(self,value):
-            self._pressure = value
-        def fdel(self):
-            del self._pressure
-        return locals()
-    pressure = property(**pressure())
+    def check_property(self,property,value):
+        if len(property.shape) == 0:
+            return property * np.ones(value)
+        elif property.shape[0] < value:
+            logging.warn('epoches larger than the set temperatures\npadding with last element')
+            temp = property
+            return np.concatenate((temp,temp[-1] * np.ones(value - temp.shape[0])))
+        elif property.shape[0] > value:
+            logging.warn('epoches smaller than the set temperatures\ntruncating elements')
+            return property[:value]
+        else:
+            return property
 
     def epoches():
         doc = "The epoches property."
@@ -179,6 +219,18 @@ class TelFitModel(TelluricsModel):
             return self._epoches
         def fset(self,value):
             self._epoches = value
+            try:
+                self.temperature = self.check_property(self.temperature,value)
+            except AttributeError:
+                pass
+            try:
+                self.pressure = self.check_property(self.pressure,value)
+            except AttributeError:
+                pass
+            try:
+                self.humidity = self.check_property(self.humidity,value)
+            except AttributeError:
+                pass
         def fdel(self):
             del self._epoches
         return locals()
@@ -192,8 +244,8 @@ class TelFitModel(TelluricsModel):
             self.epoches = obs_times.shape[0]
 
         modeler = telfit.Modeler(debug=True)
-        flux = np.array([])
-        wave = np.array([])
+        flux = []
+        wave = []
         # print(self.lambmin.to(u.cm),self.lambmax.to(u.cm))
         for i,time in enumerate(obs_times):
 
@@ -208,20 +260,21 @@ class TelFitModel(TelluricsModel):
                 'angle: {}\n'.format(angle.to(u.deg).value))
 
             model = modeler.MakeModel(humidity=self.humidity[i],
-                         pressure=self.pressure[i].to(u.hPa).value,
-                         temperature=self.temperature[i].to(u.Kelvin).value,
-                         lat=self.loc.lat.to(u.degree).value,
-                         alt=self.loc.height.to(u.km).value,
-                         lowfreq=(1.0/self.lambmax.to(u.cm).value),
-                         highfreq=(1.0/self.lambmin.to(u.cm).value),
-                         angle=angle.to(u.deg).value)
+                         pressure=float(self.pressure[i].to(u.hPa).value),
+                         temperature=float(self.temperature[i].to(u.Kelvin).value),
+                         lat=float(self.loc.lat.to(u.degree).value),
+                         alt=float(self.loc.height.to(u.km).value),
+                         lowfreq=float(1.0/self.lambmax.to(u.cm).value),
+                         highfreq=float(1.0/self.lambmin.to(u.cm).value),
+                         angle=float(angle.to(u.deg).value))
 
             ns   = len(model.x)
-            flux = np.concatenate((flux,model.y))
-            wave = np.concatenate((wave,model.x * u.nm))
+            print(ns)
+            flux.append(model.y)
+            wave.append(model.x * u.nm)
 
-        flux = flux.reshape(self.epoches,ns)
-        wave = wave.reshape(self.epoches,ns)
+        # flux = flux.reshape(self.epoches,ns)
+        # wave = wave.reshape(self.epoches,ns)
         return flux, wave
 
     @TheoryModel.lambmin.setter

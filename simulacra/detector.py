@@ -134,7 +134,7 @@ def signal_to_noise_ratio(detector,flux,exp_times):
 
 
 class Detector:
-    def __init__(self,stellar_model,resolution,loc,area,wave_grid,dark_current,read_noise,ccd_eff,through_put=0.2,epsilon=0.0,gamma=1.0,w=0.0,a=4):
+    def __init__(self,stellar_model,resolution,loc,area,wave_grid,dark_current,read_noise,ccd_eff,through_put=0.2,wave_padding=5*u.Angstrom,epsilon=0.0,gamma=1.0,w=0.0,a=4):
         '''Detector model that simulates spectra from star given resolution...
 
         Detector takes on a given theoretical `stellar_model`, `resolution`, with
@@ -171,6 +171,7 @@ class Detector:
 
         # Detector Properties
         self.wave_grid    = wave_grid
+        self.wave_padding = wave_padding
         self.dark_current = dark_current
         self.read_noise   = read_noise
         self.ccd_eff      = ccd_eff
@@ -183,17 +184,76 @@ class Detector:
         self.lsf_const_coeffs = [1.0]
         self.sigma      = 1.0/resolution
 
+    # def resolution():
+    #     doc = "The resolution property."
+    #     def fget(self):
+    #         return self._resolution
+    #     def fset(self, value):
+    #         if len(value) == 1:
+    #             self._resolution = value
+    #         if value.shape == self.wave_grid.shape:
+    #             self._resolution = value
+    #         else:
+    #             logging.error('resolution grid needs to be the same \
+    #                             shape as the wave_grid')
+    #         del self.sigma
+    #         del self.kernel
+    #     def fdel(self):
+    #         logging.warn('overwriting resolution')
+    #         del self._resolution
+    #     return locals()
+    # resolution = property(**resolution())
+    #
+    # def sigma():
+    #     doc = "The sigma property."
+    #     def fget(self):
+    #         return self._sigma
+    #     def fset(self, value):
+    #         self._sigma = value
+    #         del self.kernel
+    #         del self.resolution
+    #     def fdel(self):
+    #         logging.warn('overwriting resolution')
+    #         del self._sigma
+    #     return locals()
+    # sigma = property(**sigma())
+    #
+    # def kernel():
+    #     doc = "The kernel property."
+    #     def fget(self):
+    #         return self._kernel
+    #     def fset(self, value):
+    #         self._kernel = value
+    #         del self.resolution
+    #         del self.sigma
+    #     def fdel(self):
+    #         logging.warn('overwriting kernel')
+    #         del self._kernel
+    #     return locals()
+    # kernel = property(**kernel())
+    #
+    def transmission():
+        doc = "The transmission property."
+        def fget(self):
+            return self._transmission
+        def fset(self, value):
+            self._transmission = value
+        def fdel(self):
+            del self._transmission
+        return locals()
+    transmission = property(**transmission())
+
     def lambmin():
         doc = "The lambmin property."
         def fget(self):
-            return np.min(self.wave_grid)
+            return np.min(self.wave_grid) - self.wave_padding
         return locals()
     lambmin = property(**lambmin())
 
     def lambmax():
         doc = "The lambmax property."
         def fget(self):
-            return np.max(self.wave_grid)
+            return np.max(self.wave_grid) + self.wave_padding
         return locals()
     lambmax = property(**lambmax())
 
@@ -303,14 +363,14 @@ class Detector:
             data['theory'][model._name] = {}
             flux, wave = model.generate_transmission(self.stellar_model,self,obs_times,exp_times)
             trans_flux.append(flux), trans_wave.append(wave)
-            differences += [get_median_difference(np.log(wave[iii,:].to(u.Angstrom).value)) for iii in range(wave.shape[0])]
+            differences += [get_median_difference(np.log(wave[iii][:].to(u.Angstrom).value)) for iii in range(len(wave))]
             data['theory'][model._name]['flux'],data['theory'][model._name]['wave'] = flux, wave
             print(model, differences)
         new_step_size = min(differences)
+
         # Interpolate all models and combine onto detector
         # PARALLELIZE
         ##################################################################
-
         data['theory']['interpolated']['star'] = {}
         xs = np.arange(np.log(self.lambmin.to(u.Angstrom).value),np.log(self.lambmax.to(u.Angstrom).value),step=new_step_size)
         # fs = np.empty((epoches,xs.shape[0]))
@@ -321,19 +381,23 @@ class Detector:
             print(i)
             stellar_arr[i,:] = interpolate(xs + deltas[i],np.log(wave_stellar.to(u.Angstrom).value),flux_stellar[i,:])
             for j,model in enumerate(self.transmission_models):
-                trans_arrs[j,i,:] = interpolate(xs,np.log(trans_wave[j][i,:].to(u.Angstrom).value),trans_flux[j][i,:])
+                trans_arrs[j,i,:] = interpolate(xs,np.log(trans_wave[j][i][:].to(u.Angstrom).value),trans_flux[j][i][:])
         print('combining grids...')
         data['theory']['interpolated']['star']['flux'] = stellar_arr
         fs = stellar_arr.copy()
+        mask_the = np.zeros(fs.shape,dtype=bool)
         for j,model in enumerate(self.transmission_models):
+            print("fs: ", fs.shape)
             fs *= trans_arrs[j,:,:]
+            mask_the = (trans_arrs[j,:,:] > 1) | mask_the
             data['theory']['interpolated'][model._name]['flux'] = trans_arrs[j,:,:]
         data['theory']['interpolated']['total'] = {}
         data['theory']['interpolated']['total']['flux'] = fs
         data['theory']['interpolated']['total']['wave'] = np.exp(xs) * u.Angstrom
-        # loop through stellar, tellurics, and gas cell models and generate spectra
-        # stellar model needs to exist at the very least
-        # interpolate, convolve, jitter, stretch, noise, signal to noise ratio, errorbars
+        data['theory']['interpolated']['total']['mask'] = mask_the
+
+        # Convolving using Hermite Coeffs
+        #################################################
         self.lsf_coeffs = np.outer(np.ones((fs.shape[1],len(self.lsf_const_coeffs))), self.lsf_const_coeffs)
         # should be an array that can vary over pixel j or hermite m
         self.lsf_centering = 'centered'
@@ -349,14 +413,16 @@ class Detector:
         data['theory']['lsf'] = {}
         data['theory']['lsf']['flux'] = f_lsf
 
-        # Generate dataset grid & jitter & stretch
+        # Generate transform wavelength grid using jitter & stretch
         ##################################################
-        # res_step_size = spacing_from_res(self.resolution)
-        x             = np.log(self.wave_grid.to(u.Angstrom).value)#np.arange(self.xmin,self.xmax,step=res_step_size)
-        x_hat, m      = stretch(x,epoches,self.epsilon)
-        x_hat, delt   = jitter(x,epoches,self.w)
+        x           = np.log(self.wave_grid.to(u.Angstrom).value)#np.arange(self.xmin,self.xmax,step=res_step_size)
+        x_hat, m    = stretch(x,epoches,self.epsilon)
+        x_hat, delt = jitter(x,epoches,self.w)
 
-        # Interpolate Spline and Add Noise
+        print('xs: {} {}\nxhat: {} {}'.format(np.exp(np.min(xs)),np.exp(np.max(xs)),np.exp(np.min(x_hat)),np.exp(np.max(x_hat))))
+        data['data']['mask'] = np.array([interp.interp1d(xs,mask_the[i,:].astype(float),kind='nearest')(x_hat[i,:]) for i in range(x_hat.shape[0])]).astype(bool)
+
+        # Interpolate using Lanczos and Add Noise
         # PARALLELIZE
         ##################################################
         snr_grid  = np.empty(x_hat.shape)
@@ -381,7 +447,8 @@ class Detector:
         ###################################################
         ferr_out = generate_errors(f_readout,snr_grid)
         data['data']['ferr'] = ferr_out
-        # Pack Output into Dictionary
+
+        # Pack Parameters into Dictionary
         ###################################################
         data['parameters'] = {}
         data['parameters']['star'] = {}

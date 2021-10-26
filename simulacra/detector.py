@@ -1,5 +1,6 @@
 import numpy as np
 import astropy.units as u
+import astropy.constants as const
 import astropy.time as at
 import scipy.interpolate as interp
 import scipy.ndimage as img
@@ -125,12 +126,15 @@ def signal_to_noise_ratio(detector,flux,exp_times):
     snr = np.empty(flux.shape)
     for i in range(snr.shape[0]):
         for j in range(snr.shape[1]):
-            if j % 500 == 0:
-                print(detector.read_noise[j], (detector.dark_current[j] * exp_times[i]).to(1), detector.ccd_eff[j] * flux[i,j])
+            # if j % 500 == 0:
+            #     print(detector.read_noise[j], (detector.dark_current[j] * exp_times[i]).to(1), detector.ccd_eff[j] * flux[i,j])
             # implicitly flux is already dependent on exposure time
             snr[i,j] = detector.ccd_eff[j] * flux[i,j] \
             / np.sqrt(detector.read_noise[j] + detector.dark_current[j] * exp_times[i] + detector.ccd_eff[j] * flux[i,j])
     return snr
+
+def get_masks(xs,mask_the,x_hat):
+    return np.array([interp.interp1d(xs,mask_the[i,:].astype(float),kind='nearest')(x_hat[i,:]) for i in range(x_hat.shape[0])]).astype(bool)
 
 
 class Detector:
@@ -183,6 +187,8 @@ class Detector:
         self.resolution   = resolution
         self.lsf_const_coeffs = [1.0]
         self.sigma      = 1.0/resolution
+
+        self.trans_cutoff = 10.
 
     # def resolution():
     #     doc = "The resolution property."
@@ -276,6 +282,27 @@ class Detector:
         return locals()
     wave_grid = property(**wave_grid())
 
+    def wave_difference():
+        doc = "the wave_difference property"
+        def fget(self):
+            try:
+                return self._wave_difference
+            except AttributeError:
+                diff = self.wave_grid[1:] - self.wave_grid[:-1]
+                return np.concatenate(([np.mean(diff)],diff))
+        def fset(self,value):
+            if isinstance(value, np.ndarray):
+                if value.shape == self.wave_grid.shape:
+                    self._wave_difference = value
+                else:
+                    logging.error('difference array must have the same shape as wave grid {}.'.format(value.shape,self.wave_grid.shape))
+            else:
+                self._wave_difference = value * np.ones(self.wave_grid.shape)
+        def fdel(self):
+            self._wave_difference = None
+        return locals()
+    wave_difference = property(**wave_difference())
+
     def ccd_eff():
         doc = "The ccd_eff property."
         def fget(self):
@@ -351,7 +378,7 @@ class Detector:
         data['theory'] = {}
         data['theory']['star'] = {}
         flux_stellar, wave_stellar, deltas, rvs = self.stellar_model.generate_spectra(self,obs_times,exp_times)
-
+        print('right after generate spectra: ', np.where(~np.isfinite(flux_stellar)))
         data['data']['rvs'], data['theory']['star']['deltas'] = rvs, deltas
         data['theory']['star']['flux'], data['theory']['star']['wave'] = flux_stellar, wave_stellar
         differences = [get_median_difference(np.log(wave_stellar.to(u.Angstrom).value))]
@@ -373,23 +400,23 @@ class Detector:
         ##################################################################
         data['theory']['interpolated']['star'] = {}
         xs = np.arange(np.log(self.lambmin.to(u.Angstrom).value),np.log(self.lambmax.to(u.Angstrom).value),step=new_step_size)
-        # fs = np.empty((epoches,xs.shape[0]))
         print('interpolating spline...')
         stellar_arr = np.empty((epoches,xs.shape[0]))
         trans_arrs  = np.empty((len(self.transmission_models),epoches,xs.shape[0]))
         for i in range(epoches):
             print(i)
-            stellar_arr[i,:] = interpolate(xs + deltas[i],np.log(wave_stellar.to(u.Angstrom).value),flux_stellar[i,:])
+            stellar_arr[i,:] = interpolate(xs + deltas[i],np.log(wave_stellar.to(u.Angstrom).value),flux_stellar[i,:].to(u.erg/u.s/u.cm**3).value)
             for j,model in enumerate(self.transmission_models):
                 trans_arrs[j,i,:] = interpolate(xs,np.log(trans_wave[j][i][:].to(u.Angstrom).value),trans_flux[j][i][:])
         print('combining grids...')
         data['theory']['interpolated']['star']['flux'] = stellar_arr
         fs = stellar_arr.copy()
+        flux_unit = flux_stellar.unit
         mask_the = np.zeros(fs.shape,dtype=bool)
         for j,model in enumerate(self.transmission_models):
-            print("fs: ", fs.shape)
+            # print("fs: ", fs.shape)
             fs *= trans_arrs[j,:,:]
-            mask_the = (trans_arrs[j,:,:] > 1) | mask_the
+            mask_the = (trans_arrs[j,:,:] > self.trans_cutoff) | mask_the
             data['theory']['interpolated'][model._name]['flux'] = trans_arrs[j,:,:]
         data['theory']['interpolated']['total'] = {}
         data['theory']['interpolated']['total']['flux'] = fs
@@ -418,39 +445,49 @@ class Detector:
         x           = np.log(self.wave_grid.to(u.Angstrom).value)#np.arange(self.xmin,self.xmax,step=res_step_size)
         x_hat, m    = stretch(x,epoches,self.epsilon)
         x_hat, delt = jitter(x,epoches,self.w)
+        data['parameters'] = {}
+        data['parameters']['wavetransform'] = {}
+        data['parameters']['wavetransform']['m'] = m
+        data['parameters']['wavetransform']['delt'] = delt
+
 
         print('xs: {} {}\nxhat: {} {}'.format(np.exp(np.min(xs)),np.exp(np.max(xs)),np.exp(np.min(x_hat)),np.exp(np.max(x_hat))))
-        data['data']['mask'] = np.array([interp.interp1d(xs,mask_the[i,:].astype(float),kind='nearest')(x_hat[i,:]) for i in range(x_hat.shape[0])]).astype(bool)
+        data_mask = get_masks(xs,mask_the,x_hat)
+        data['data']['mask'] = data_mask
 
         # Interpolate using Lanczos and Add Noise
         # PARALLELIZE
         ##################################################
-        snr_grid  = np.empty(x_hat.shape)
         f_exp     = np.empty(x_hat.shape)
         print('interpolating lanczos...')
         for i in range(f_exp.shape[0]):
             f_exp[i,:] = lanczos_interpolation(x_hat[i,:],xs,f_lsf[i,:],dx=new_step_size,a=self.a)
-            print('f_exp {}: {}'.format(i,np.median(f_exp[i,:])))
+            print('f_exp {} median: {} {}'.format(i,np.median(f_exp[i,:]),flux_unit))
+
+        # print(f_exp.unit)
+        print('area: {}\t avg d lambda: {}\t avg lambda: {}\t avg exp times: {}'.format(self.area,np.mean(self.wave_difference),np.mean(self.wave_grid),np.mean(exp_times)))
+        n_exp = self.through_put * (self.area/(const.hbar * const.c)*np.einsum('ij,j,j,i->ij',f_exp * flux_unit,self.wave_difference,self.wave_grid,exp_times)).to(1)
+        for i in range(n_exp.shape[0]):
+            print('{} n mean: {:3.2e}\t n median: {:3.2e}'.format(i,np.mean(n_exp[i,~data_mask[i,:]]),np.median(n_exp[i,~data_mask[i,:]])))
 
         print('generating signal to noise ratios...')
-        snr_grid = signal_to_noise_ratio(self,f_exp,exp_times)
+        snr_grid = signal_to_noise_ratio(self,n_exp,exp_times)
         print('adding noise...')
-        f_readout = add_noise(f_exp,snr_grid)
+        n_readout = add_noise(n_exp,snr_grid)
 
         data['data']['snr'] = snr_grid
-        data['data']['flux_expected'] = f_exp
-        data['data']['flux'] = f_readout
+        data['data']['flux_expected'] = n_exp
+        data['data']['flux'] = n_readout
         data['data']['wave'] = self.wave_grid
 
         # Get Error Bars
         # PARALLELIZE
         ###################################################
-        ferr_out = generate_errors(f_readout,snr_grid)
-        data['data']['ferr'] = ferr_out
+        nerr_out = generate_errors(n_readout,snr_grid)
+        data['data']['ferr'] = nerr_out
 
         # Pack Parameters into Dictionary
         ###################################################
-        data['parameters'] = {}
         data['parameters']['star'] = {}
         data['parameters']['star'] = dict_of_attr(data['parameters']['star'],self.stellar_model)
 

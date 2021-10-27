@@ -19,5 +19,5 @@ class GasCellModel(TheoryModel):
 
     def generate_transmission(self,star,detector,obs_times,exp_times):
         flux = [self.flux for i in range(len(obs_times))]
-        wave = [self.flux for i in range(len(obs_times))]
+        wave = [self.wave for i in range(len(obs_times))]
         return flux, wave

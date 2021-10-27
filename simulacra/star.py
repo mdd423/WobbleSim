@@ -166,7 +166,7 @@ class PhoenixModel(TheoryModel):
     def __init__(self,distance,alpha,z,temperature,logg,target,amplitude,period,outdir=None):
         super(PhoenixModel,self).__init__()
         if outdir is None:
-            self.outdir = os.path.join('data','stellar','PHOENIX')
+            self.outdir = os.path.join('..','data','stellar','PHOENIX')
             os.makedirs(self.outdir,exist_ok=True)
         self.temperature = temperature
         self.z = z
@@ -199,8 +199,17 @@ class PhoenixModel(TheoryModel):
         time = atime.Time([obs_times[i] + exp_times[i]/2 for i in range(len(obs_times))])
         rvs    = get_velocity_measurements(time,self.amplitude,self.period,detector.loc,self.target)
         deltas = shifts(rvs)
+        import matplotlib.pyplot as plt
+        fig, axes  = plt.subplots(figsize=(20,5))
 
-        obs_flux = stellar_to_detector_flux(self,detector,exp_times)
+        print('surface flux: mean {:3.2e}\t median {:3.2e}'.format(np.mean(self.surface_flux),np.median(self.surface_flux)))
+        obs_flux = self.surface_flux * (self.stellar_radius**2/self.distance**2).to(1)
+        print('obs     flux: mean {:3.2e}\t median {:3.2e}'.format(np.mean(obs_flux),np.median(obs_flux)))
+        axes.plot(self.wave,obs_flux,'or',alpha=0.3)
+        # axes.set_xlim(6120,6130)
+        plt.show()
+        obs_flux = np.outer(np.ones(obs_times.shape),obs_flux)
+        # obs_flux = stellar_to_detector_flux(self,detector,exp_times)
         return obs_flux, self.wave, deltas, rvs
 
     def plot(self,ax,epoch_idx,normalize=None,nargs=[]):

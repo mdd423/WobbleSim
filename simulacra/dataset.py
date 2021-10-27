@@ -11,17 +11,24 @@ def dict_from_h5(hf,data):
 
     import h5py
     for key in hf.keys():
-        if isinstance(hf[key], h5py.Group):
-            data[key] = {}
-            data[key] = dict_from_h5(hf[key],data[key])
-        elif key == 'obs_times':
+        if key == 'obs_times':
             try:
                 print(hf[key])
                 data[key] = at.Time(np.array(hf[key]).tolist(),format='isot')
             except TypeError:
                 pass
+        elif key == 'loc':
+            # print(hf[key]['value'][()],hf[key]['unit'][()][0])
+            data[key] = coord.EarthLocation.from_geocentric(hf['loc']['value'][()][0] * u.Unit(hf['loc']['unit'][()][0]) \
+                            ,hf['loc']['value'][()][1] * u.Unit(hf['loc']['unit'][()][0]) \
+                            ,hf['loc']['value'][()][2] * u.Unit(hf['loc']['unit'][()][0]))
+        elif key == 'target':
+            data[key] = coord.SkyCoord(hf['target']['ra'][0] * u.deg,hf['target']['dec'][0] * u.deg)
         elif key == 'value':
             return np.array(hf['value']) * u.Unit(hf['unit'][0])
+        elif isinstance(hf[key], h5py.Group):
+            data[key] = {}
+            data[key] = dict_from_h5(hf[key],data[key])
         elif len(hf[key].shape) == 0:
             data[key] = hf[key]
         else:
@@ -68,9 +75,10 @@ def save_dict_as_h5(hf,data):
             print('saving location...{}'.format(data[key].geocentric))
             hf.create_dataset(key,data[key].geocentric)
         elif isinstance(data[key],coord.SkyCoord):
+            print('saving target...{} {}'.format(data[key].ra,data[key].dec))
             group = hf.create_group(key)
-            group.create_dataset('ra',[data[key].ra.to(u.deg).value])
-            group.create_dataset('dec',[data[key].dec.to(u.deg).value])
+            group.create_dataset('ra',data=[data[key].ra.to(u.deg).value])
+            group.create_dataset('dec',data=[data[key].dec.to(u.deg).value])
         else:
             print(key, ' saving as string')
             dt = h5py.special_dtype(vlen=str)
@@ -138,7 +146,7 @@ class DetectorData:
     def __setitem__(self,key,value):
         self.data[key] = value
 
-    def plot_flux(self,ax,i,flux_keys,wave_keys,pargs=[],ferr_keys=None,xy=True,units=u.Angstrom,normalize=None,nargs=[]):
+    def plot_flux(self,ax,i,flux_keys,wave_keys,pargs=[],ferr_keys=None,xy='',units=u.Angstrom,normalize=None,nargs=[]):
         y_data = self
         for key in flux_keys:
             y_data = y_data[key]
@@ -177,27 +185,27 @@ class DetectorData:
             ax.errorbar(x, y, yerr,**pargs)
         return ax
 
-    def plot_data(self,ax,i,xy=True,units=u.Angstrom,normalize=None,nargs=[]):
+    def plot_data(self,ax,i,xy='',units=u.Angstrom,normalize=None,nargs=[]):
         self.plot_flux(ax,i,['data','flux'],['data','wave'],ferr_keys=['data','ferr'],pargs=data_plot_settings,xy=xy,units=units,normalize=normalize,nargs=nargs)
         return ax
 
-    def plot_theory(self,ax,i,xy=True,units=u.Angstrom,normalize=None,nargs=[]):
+    def plot_theory(self,ax,i,xy='',units=u.Angstrom,normalize=None,nargs=[]):
         self.plot_flux(ax,i,['theory','interpolated','total','flux'],['theory','interpolated','total','wave'],xy=xy,pargs={'color':'gray',**interpolated_settings},units=units,normalize=normalize,nargs=nargs)
         return ax
 
-    def plot_lsf(self,ax,i,xy=True,units=u.Angstrom,normalize=None,nargs=[]):
+    def plot_lsf(self,ax,i,xy='',units=u.Angstrom,normalize=None,nargs=[]):
         self.plot_flux(ax,i,['theory','lsf','flux'],['theory','interpolated','total','wave'],xy=xy,pargs={'color':'pink',**interpolated_settings},units=units,normalize=normalize,nargs=nargs)
         return ax
 
-    def plot_star(self,ax,i,xy=True,units=u.Angstrom,normalize=None,nargs=[]):
+    def plot_star(self,ax,i,xy='',units=u.Angstrom,normalize=None,nargs=[]):
         self.plot_flux(ax,i,['theory','interpolated','star','flux'],['theory','interpolated','total','wave'],pargs={**star_settings,**interpolated_settings},xy=xy,units=units,normalize=normalize,nargs=nargs)
         return ax
 
-    def plot_gas(self,ax,i,xy=True,units=u.Angstrom,normalize=None,nargs=[]):
+    def plot_gas(self,ax,i,xy='',units=u.Angstrom,normalize=None,nargs=[]):
         self.plot_flux(ax,i,['theory','interpolated','gascell','flux'],['theory','interpolated','total','wave'],xy=xy,units=units,pargs={**gas_settings,**interpolated_settings},normalize=normalize,nargs=nargs)
         return ax
 
-    def plot_tellurics(self,ax,i,xy=True,units=u.Angstrom,normalize=None,nargs=[]):
+    def plot_tellurics(self,ax,i,xy='',units=u.Angstrom,normalize=None,nargs=[]):
         self.plot_flux(ax,i,['theory','interpolated','tellurics','flux'],['theory','interpolated','total','wave'],xy=xy,pargs={**tellurics_settings,**interpolated_settings},normalize=normalize,nargs=nargs)
         return ax
 

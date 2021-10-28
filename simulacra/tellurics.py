@@ -114,6 +114,7 @@ class SkyCalcModel(TelluricsModel):
 class TelFitModel(TelluricsModel):
     def __init__(self,lambmin,lambmax,loc,humidity=50.0,temperature=300*u.Kelvin,pressure=1.0e6*u.Pa,wave_padding=10*u.Angstrom):
         self._name = 'tellurics'
+        self.wave_padding = wave_padding
         self.lambmin = lambmin
         self.lambmax = lambmax
         # assert that all of these parameters that are arrays
@@ -124,7 +125,7 @@ class TelFitModel(TelluricsModel):
         self.pressure    = pressure
         self.humidity    = humidity
 
-        self.wave_padding = wave_padding
+
 
 
         # dlamb = 1e-2 * u.Angstrom

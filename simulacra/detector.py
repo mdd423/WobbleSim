@@ -122,7 +122,7 @@ def add_noise(f_exp,snr_grid):
             f_readout[i,j] = f_exp[i,j] + random.normal(0.0,1./snr_grid[i,j])
     return f_readout
 
-def signal_to_noise_ratio(detector,flux,exp_times):
+def signal_to_noise_ratio(detector,flux,exp_times,gamma):
     xs,ys = np.where(flux < 0)
     for x,y in zip(xs,ys):
         flux[x,y] = 0
@@ -134,7 +134,7 @@ def signal_to_noise_ratio(detector,flux,exp_times):
             #     print(detector.read_noise[j], (detector.dark_current[j] * exp_times[i]).to(1), detector.ccd_eff[j] * flux[i,j])
             # implicitly flux is already dependent on exposure time
             snr[i,j] = detector.ccd_eff[j] * flux[i,j] \
-            / np.sqrt(detector.read_noise[j] + detector.dark_current[j] * exp_times[i] + detector.ccd_eff[j] * flux[i,j])
+            / (detector.gamma * np.sqrt(detector.read_noise[j] + detector.dark_current[j] * exp_times[i] + detector.ccd_eff[j] * flux[i,j]))
     return snr
 
 def get_masks(xs,mask_the,x_hat):
@@ -372,7 +372,7 @@ class Detector:
         # print(maximums)
         return min(maximums)
 
-    def simulate(self,obs_times,exp_times,convolve_on=True):
+    def simulate(self,obs_times,exp_times):
         data = DetectorData()
         data['data'] = {}
         data['data']['obs_times'] = obs_times
@@ -456,7 +456,7 @@ class Detector:
         with Pool() as pool:
             obj = ConvolveIter(fs)
             M = pool.starmap(convolve_hermites, obj)
-            print(M,len(M))
+            # print(M,len(M))
 
         f_lsf = np.asarray(M)
 
@@ -504,7 +504,7 @@ class Detector:
         with Pool() as pool:
             obj = LanczosIter()
             M = pool.starmap(lanczos_interpolation, obj)
-            print(M,len(M))
+            # print(M,len(M))
 
         f_exp = np.asarray(M)
 

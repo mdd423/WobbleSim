@@ -10,6 +10,9 @@ import logging
 
 from simulacra.dataset import DetectorData
 
+from itertools import repeat
+from multiprocessing import Pool
+
 def get_median_difference(x):
 
     return np.median([t - s for s, t in zip(x, x[1:])])
@@ -431,12 +434,31 @@ class Detector:
         self.lsf_centering = 'centered'
         f_lsf = np.empty(fs.shape)
         print('convolving...')
-        if convolve_on:
-            for ii in range(f_lsf.shape[0]):
-                print(str(ii) + '\r')
-                f_lsf[ii,:] = convolve_hermites(fs[ii,:],self.lsf_coeffs,self.lsf_centering,self.sigma,self.sigma_range,new_step_size)
-        else:
-            f_lsf = fs
+        class ConvolveIter:
+            def __init__(obj,fs):
+                obj.fs = fs
+                obj._i =  0
+
+            def __iter__(obj):
+                # output = (fs[obj._i,:], self.lsf_coeffs,self.lsf_centering,self.sigma,self.sigma_range,new_step_size)
+                obj._i = 0
+                return obj
+
+            def __next__(obj):
+
+                if obj._i == fs.shape[0]:
+                    raise StopIteration
+                print(obj._i)
+                output = (fs[obj._i,:], self.lsf_coeffs,self.lsf_centering,self.sigma,self.sigma_range,new_step_size)
+                obj._i += 1
+                return output
+
+        with Pool() as pool:
+            obj = ConvolveIter(fs)
+            M = pool.starmap(convolve_hermites, obj)
+            print(M,len(M))
+
+        f_lsf = np.asarray(M)
 
         data['theory']['lsf'] = {}
         data['theory']['lsf']['flux'] = f_lsf
@@ -451,7 +473,6 @@ class Detector:
         data['parameters']['wavetransform']['m'] = m
         data['parameters']['wavetransform']['delt'] = delt
 
-
         print('xs: {} {}\nxhat: {} {}'.format(np.exp(np.min(xs)),np.exp(np.max(xs)),np.exp(np.min(x_hat)),np.exp(np.max(x_hat))))
         data_mask = get_masks(xs,mask_the,x_hat)
         data['data']['mask'] = data_mask
@@ -461,9 +482,35 @@ class Detector:
         ##################################################
         f_exp     = np.empty(x_hat.shape)
         print('interpolating lanczos...')
-        for i in range(f_exp.shape[0]):
-            f_exp[i,:] = lanczos_interpolation(x_hat[i,:],xs,f_lsf[i,:],dx=new_step_size,a=self.a)
-            print('f_exp {} median: {} {}'.format(i,np.median(f_exp[i,:]),flux_unit))
+
+        class LanczosIter:
+            def __init__(obj):
+
+                obj._i =  0
+
+            def __iter__(obj):
+                # output = (fs[obj._i,:], self.lsf_coeffs,self.lsf_centering,self.sigma,self.sigma_range,new_step_size)
+                obj._i = 0
+                return obj
+
+            def __next__(obj):
+                if obj._i == f_lsf.shape[0]:
+                    raise StopIteration
+                print(obj._i)
+                output = (x_hat[obj._i,:],xs,f_lsf[obj._i,:],new_step_size,self.a)
+                obj._i += 1
+                return output
+
+        with Pool() as pool:
+            obj = LanczosIter()
+            M = pool.starmap(lanczos_interpolation, obj)
+            print(M,len(M))
+
+        f_exp = np.asarray(M)
+
+        # for i in range(f_exp.shape[0]):
+        #     f_exp[i,:] = lanczos_interpolation(x_hat[i,:],xs,f_lsf[i,:],dx=new_step_size,a=self.a)
+        #     print('f_exp {} median: {} {}'.format(i,np.median(f_exp[i,:]),flux_unit))
 
         # print(f_exp.unit)
         print('area: {}\t avg d lambda: {}\t avg lambda: {}\t avg exp times: {}'.format(self.area,np.mean(self.wave_difference),np.mean(self.wave_grid),np.mean(exp_times)))

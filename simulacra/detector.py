@@ -121,7 +121,7 @@ def add_noise(f_exp,snr_grid):
             f_readout[i,j] = f_exp[i,j] + random.normal(0.0,1./snr_grid[i,j])
     return f_readout
 
-def signal_to_noise_ratio(detector,flux,exp_times,gamma):
+def signal_to_noise_ratio(detector,flux,exp_times):
     xs,ys = np.where(flux < 0)
     for x,y in zip(xs,ys):
         flux[x,y] = 0

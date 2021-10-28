@@ -2,6 +2,7 @@ from simulacra.theory import TheoryModel
 import numpy.random as random
 import astropy.units as u
 import astropy.coordinates as coord
+import astropy.time as at
 import telfit
 import logging
 import numpy as np
@@ -111,7 +112,7 @@ class SkyCalcModel(TelluricsModel):
 
 
 class TelFitModel(TelluricsModel):
-    def __init__(self,lambmin,lambmax,loc,humidity=50.0,temperature=300*u.Kelvin,pressure=1.0e6*u.Pa):
+    def __init__(self,lambmin,lambmax,loc,humidity=50.0,temperature=300*u.Kelvin,pressure=1.0e6*u.Pa,wave_padding=10*u.Angstrom):
         self._name = 'tellurics'
         self.lambmin = lambmin
         self.lambmax = lambmax
@@ -122,6 +123,8 @@ class TelFitModel(TelluricsModel):
         self.temperature = temperature
         self.pressure    = pressure
         self.humidity    = humidity
+
+        self.wave_padding = wave_padding
 
 
         # dlamb = 1e-2 * u.Angstrom
@@ -237,6 +240,7 @@ class TelFitModel(TelluricsModel):
     epoches = property(**epoches())
 
     def generate_transmission(self,star,detector,obs_times,exp_times):
+        times = at.Time([obs_times[i] + exp_times[i]/2 for i in range(len(obs_times))])
         telescope_frame = coord.AltAz(obstime=obs_times,location=detector.loc)
         secz = np.array(star.target.transform_to(telescope_frame).secz)
         if self.epoches != obs_times.shape[0]:
@@ -279,8 +283,8 @@ class TelFitModel(TelluricsModel):
 
     @TheoryModel.lambmin.setter
     def lambmin(self,lambmin):
-        self._lambmin = lambmin
+        self._lambmin = lambmin + self.wave_padding
 
     @TheoryModel.lambmax.setter
     def lambmax(self,lambmax):
-        self._lambmax = lambmax
+        self._lambmax = lambmax + self.wave_padding

@@ -119,7 +119,7 @@ def add_noise(f_exp,snr_grid):
     for i in range(f_exp.shape[0]):
         print('snr {}: {}'.format(i,np.median(snr_grid[i,:])))
         for j in range(f_exp.shape[1]):
-            f_readout[i,j] = f_exp[i,j] + random.normal(0.0,1./snr_grid[i,j])
+            f_readout[i,j] = f_exp[i,j] + random.normal(0.0,f_exp[i,j]/snr_grid[i,j])
     return f_readout
 
 def signal_to_noise_ratio(detector,flux,exp_times):

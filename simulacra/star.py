@@ -199,8 +199,6 @@ class PhoenixModel(TheoryModel):
         time = atime.Time([obs_times[i] + exp_times[i]/2 for i in range(len(obs_times))])
         rvs    = get_velocity_measurements(time,self.amplitude,self.period,detector.loc,self.target)
         deltas = shifts(rvs)
-        import matplotlib.pyplot as plt
-        fig, axes  = plt.subplots(figsize=(20,5))
 
         print('surface flux: mean {:3.2e}\t median {:3.2e}'.format(np.mean(self.surface_flux),np.median(self.surface_flux)))
         obs_flux = self.surface_flux * (self.stellar_radius**2/self.distance**2).to(1)

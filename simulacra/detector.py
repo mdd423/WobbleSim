@@ -522,10 +522,6 @@ class Detector:
         for i in range(n_exp.shape[0]):
             print('{} n mean: {:3.2e}\t n median: {:3.2e}'.format(i,np.mean(n_exp[i,~data_mask[i,:]]),np.median(n_exp[i,~data_mask[i,:]])))
 
-        fig, ax = plt.subplots(figsize=(20,5))
-        ax.plot(np.log(self.wave_grid.to(u.Angstrom).value),n_exp[0,:],'.k',alpha=0.5)
-        plt.show()
-
         print('generating true signal to noise ratios...')
         snr_grid = signal_to_noise_ratio(self,n_exp,exp_times)
         print('adding noise...')

@@ -84,11 +84,13 @@ def interpolate(x,xs,ys):
 def lanczos_interpolation(x,xs,ys,dx,a=4):
     x0 = xs[0]
     y = np.zeros(x.shape)
+    v_lanczos = np.vectorize(lanczos_kernel)
     for i,x_value in enumerate(x):
         # which is basically the same as sample=x[j-a+1] to x[j+a]
         # where j in this case is the nearest index xs_j to x_value
         sample_min,sample_max = max(0,abs(x_value-x0)//dx - a + 1),min(xs.shape[0],abs(x_value-x0)//dx + a)
         samples = np.arange(sample_min,sample_max,dtype=int)
+        # y[i]/ = v_lanczos((x_value - xs[samples])/dx,a).sum()
         for sample in samples:
             y[i] += ys[sample] * lanczos_kernel((x_value - xs[sample])/dx,a)
     return y
@@ -100,6 +102,9 @@ def lanczos_kernel(x,a):
         return a*np.sin(np.pi*u.radian*x) * np.sin(np.pi*u.radian*x/a)/(np.pi**2 * x**2)
     return 0
 
+def average_difference(x):
+    return np.mean([t - s for s, t in zip(x, x[1:])])
+
 def generate_errors(f,snr):
     xs,ys = np.where(f < 0)
     for x,y in zip(xs,ys):
@@ -110,8 +115,14 @@ def generate_errors(f,snr):
             f_err[i,j] = f[i,j]/snr[i,j]
     return f_err
 
-def average_difference(x):
-    return np.mean([t - s for s, t in zip(x, x[1:])])
+from numba import vectorize, float64
+@vectorize([float64(float64, float64)])
+def add_noise_v(f, snr):
+    return f + random.normal(0.0,f/snr)
+
+@vectorize([float64(float64, float64)])
+def generate_errors_v(f, snr):
+    return f / snr
 
 def add_noise(f_exp,snr_grid):
     f_readout = np.empty(f_exp.shape)
@@ -191,7 +202,7 @@ class Detector:
         self.lsf_const_coeffs = [1.0]
         self.sigma      = 1.0/resolution
 
-        self.trans_cutoff = 10.
+        self.transmission_cutoff = 10.
 
     # def resolution():
     #     doc = "The resolution property."
@@ -378,13 +389,19 @@ class Detector:
         data['data']['exp_times'] = exp_times
         data['data']['epoches']   = obs_times.shape[0]
         epoches = obs_times.shape[0]
+
+        # Generate Stellar Spectra
+        ###################################################
         data['theory'] = {}
         data['theory']['star'] = {}
         flux_stellar, wave_stellar, deltas, rvs = self.stellar_model.generate_spectra(self,obs_times,exp_times)
-        print('right after generate spectra: ', np.where(~np.isfinite(flux_stellar)))
+
         data['data']['rvs'], data['theory']['star']['deltas'] = rvs, deltas
         data['theory']['star']['flux'], data['theory']['star']['wave'] = flux_stellar, wave_stellar
         differences = [get_median_difference(np.log(wave_stellar.to(u.Angstrom).value))]
+
+        # Generate Transmission
+        ###################################################
         print('generating spectra...')
         trans_flux, trans_wave = [], []
         data['theory']['interpolated'] = {}
@@ -419,7 +436,7 @@ class Detector:
         for j,model in enumerate(self.transmission_models):
             # print("fs: ", fs.shape)
             fs *= trans_arrs[j,:,:]
-            mask_the = (trans_arrs[j,:,:] > self.trans_cutoff) | mask_the
+            mask_the = (trans_arrs[j,:,:] > self.transmission_cutoff) | mask_the
             data['theory']['interpolated'][model._name]['flux'] = trans_arrs[j,:,:]
         data['theory']['interpolated']['total'] = {}
         data['theory']['interpolated']['total']['flux'] = fs
@@ -431,7 +448,6 @@ class Detector:
         self.lsf_coeffs = np.outer(np.ones((fs.shape[1],len(self.lsf_const_coeffs))), self.lsf_const_coeffs)
         # should be an array that can vary over pixel j or hermite m
         self.lsf_centering = 'centered'
-        f_lsf = np.empty(fs.shape)
         print('convolving...')
         class ConvolveIter:
             def __init__(obj,fs):
@@ -455,9 +471,13 @@ class Detector:
         with Pool() as pool:
             obj = ConvolveIter(fs)
             M = pool.starmap(convolve_hermites, obj)
-            # print(M,len(M))
-
         f_lsf = np.asarray(M)
+
+        import matplotlib.pyplot as plt
+        fig, ax = plt.subplots(figsize=(20,5))
+        ax.plot(xs,f_lsf[0,:],'.k',alpha=0.5)
+        plt.xlim(np.log(6210),np.log(6220))
+        plt.show()
 
         data['theory']['lsf'] = {}
         data['theory']['lsf']['flux'] = f_lsf
@@ -477,11 +497,8 @@ class Detector:
         data['data']['mask'] = data_mask
 
         # Interpolate using Lanczos and Add Noise
-        # PARALLELIZE
         ##################################################
-        f_exp     = np.empty(x_hat.shape)
         print('interpolating lanczos...')
-
         class LanczosIter:
             def __init__(obj):
 
@@ -503,35 +520,46 @@ class Detector:
         with Pool() as pool:
             obj = LanczosIter()
             M = pool.starmap(lanczos_interpolation, obj)
-            # print(M,len(M))
-
         f_exp = np.asarray(M)
 
-        # for i in range(f_exp.shape[0]):
-        #     f_exp[i,:] = lanczos_interpolation(x_hat[i,:],xs,f_lsf[i,:],dx=new_step_size,a=self.a)
-        #     print('f_exp {} median: {} {}'.format(i,np.median(f_exp[i,:]),flux_unit))
+        fig, ax = plt.subplots(figsize=(20,5))
+        plt.xlim(np.log(6210),np.log(6220))
+        ax.plot(np.log(self.wave_grid.to(u.Angstrom).value),f_exp[0,:],'.k',alpha=0.5)
+        plt.show()
 
-        # print(f_exp.unit)
         print('area: {}\t avg d lambda: {}\t avg lambda: {}\t avg exp times: {}'.format(self.area,np.mean(self.wave_difference),np.mean(self.wave_grid),np.mean(exp_times)))
-        n_exp = self.through_put * (self.area/(const.hbar * const.c)*np.einsum('ij,j,j,i->ij',f_exp * flux_unit,self.wave_difference,self.wave_grid,exp_times)).to(1)
+        n_exp = self.through_put * (self.area/(const.hbar * const.c)*np.einsum('ij,j,j,i->ij',f_exp * flux_unit, self.wave_difference,self.wave_grid,exp_times)).to(1)
         for i in range(n_exp.shape[0]):
             print('{} n mean: {:3.2e}\t n median: {:3.2e}'.format(i,np.mean(n_exp[i,~data_mask[i,:]]),np.median(n_exp[i,~data_mask[i,:]])))
 
-        print('generating signal to noise ratios...')
+        fig, ax = plt.subplots(figsize=(20,5))
+        ax.plot(np.log(self.wave_grid.to(u.Angstrom).value),n_exp[0,:],'.k',alpha=0.5)
+        plt.show()
+
+        print('generating true signal to noise ratios...')
         snr_grid = signal_to_noise_ratio(self,n_exp,exp_times)
         print('adding noise...')
-        n_readout = add_noise(n_exp,snr_grid)
+        out_shape = snr_grid.shape
+        n_readout = add_noise_v(n_exp.flatten().value,snr_grid.flatten()).reshape(out_shape)
 
-        data['data']['snr'] = snr_grid
+        fig, ax = plt.subplots(figsize=(20,5))
+        ax.plot(np.log(self.wave_grid.to(u.Angstrom).value),n_readout[0,:],'.k',alpha=0.5)
+        plt.show()
+
+        data['parameters']['true_snr'] = snr_grid
         data['data']['flux_expected'] = n_exp
         data['data']['flux'] = n_readout
         data['data']['wave'] = self.wave_grid
 
         # Get Error Bars
-        # PARALLELIZE
         ###################################################
-        nerr_out = generate_errors(n_readout,snr_grid)
-        data['data']['ferr'] = nerr_out
+        print('generating exp signal to noise ratios...')
+        snr_readout = signal_to_noise_ratio(self,n_readout,exp_times)
+        print('generating errors...')
+        nerr_out = generate_errors_v(n_readout.flatten(),snr_readout.flatten()).reshape(out_shape)
+
+        data['data']['snr_readout'] = snr_readout
+        data['data']['ferr']        = nerr_out
 
         # Pack Parameters into Dictionary
         ###################################################
@@ -544,6 +572,7 @@ class Detector:
         for model in self.transmission_models:
             data['parameters'][model._name] = {}
             data['parameters'][model._name] = dict_of_attr(data['parameters'][model._name],model)
+        print('done.')
         return data
 
 def dict_of_attr(data,obj):

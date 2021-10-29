@@ -125,9 +125,6 @@ class TelFitModel(TelluricsModel):
         self.pressure    = pressure
         self.humidity    = humidity
 
-
-
-
         # dlamb = 1e-2 * u.Angstrom
         # self.wave = np.arange(lambmin.to(u.Angstrom).value,lambmax.to(u.Angstrom).value,step=dlamb.to(u.Angstrom).value) * u.Angstrom
 
@@ -284,7 +281,7 @@ class TelFitModel(TelluricsModel):
 
     @TheoryModel.lambmin.setter
     def lambmin(self,lambmin):
-        self._lambmin = lambmin + self.wave_padding
+        self._lambmin = lambmin - self.wave_padding
 
     @TheoryModel.lambmax.setter
     def lambmax(self,lambmax):

@@ -474,12 +474,6 @@ class Detector:
             M = pool.starmap(convolve_hermites, obj)
         f_lsf = np.asarray(M)
 
-        import matplotlib.pyplot as plt
-        fig, ax = plt.subplots(figsize=(20,5))
-        ax.plot(xs,f_lsf[0,:],'.k',alpha=0.5)
-        plt.xlim(np.log(6210),np.log(6220))
-        plt.show()
-
         data['theory']['lsf'] = {}
         data['theory']['lsf']['flux'] = f_lsf
 
@@ -523,11 +517,6 @@ class Detector:
             M = pool.starmap(lanczos_interpolation, obj)
         f_exp = np.asarray(M)
 
-        fig, ax = plt.subplots(figsize=(20,5))
-        plt.xlim(np.log(6210),np.log(6220))
-        ax.plot(np.log(self.wave_grid.to(u.Angstrom).value),f_exp[0,:],'.k',alpha=0.5)
-        plt.show()
-
         print('area: {}\t avg d lambda: {}\t avg lambda: {}\t avg exp times: {}'.format(self.area,np.mean(self.wave_difference),np.mean(self.wave_grid),np.mean(exp_times)))
         n_exp = self.through_put * (self.area/(const.hbar * const.c)*np.einsum('ij,j,j,i->ij',f_exp * flux_unit, self.wave_difference,self.wave_grid,exp_times)).to(1)
         for i in range(n_exp.shape[0]):
@@ -542,10 +531,6 @@ class Detector:
         print('adding noise...')
         out_shape = snr_grid.shape
         n_readout = add_noise_v(n_exp.flatten().value,snr_grid.flatten()).reshape(out_shape)
-
-        fig, ax = plt.subplots(figsize=(20,5))
-        ax.plot(np.log(self.wave_grid.to(u.Angstrom).value),n_readout[0,:],'.k',alpha=0.5)
-        plt.show()
 
         data['parameters']['true_snr'] = snr_grid
         data['data']['flux_expected'] = n_exp

@@ -13,6 +13,15 @@ from simulacra.dataset import DetectorData
 from itertools import repeat
 from multiprocessing import Pool
 
+def dict_of_attr(data,obj):
+    obj_list = [a for a in dir(obj) if not a.startswith('__')]
+    for ele in obj_list:
+        try:
+            data[ele] = getattr(obj, ele)
+        except AttributeError:
+            pass
+    return data
+
 def get_median_difference(x):
 
     return np.median([t - s for s, t in zip(x, x[1:])])
@@ -53,7 +62,7 @@ def continuous_convolve(kernels,obj):
     return out
 
 def convolve_hermites(f_in,coeffs,center_kw,sigma,sigma_range,spacing):
-    x = np.arange(-sigma_range * sigma,sigma_range * sigma,step=spacing)
+    x = np.arange(-sigma_range * max(sigma),sigma_range * max(sigma),step=spacing)
 
     if center_kw == 'centered':
         centering = int(x.shape[0]/2)
@@ -70,7 +79,7 @@ def convolve_hermites(f_in,coeffs,center_kw,sigma,sigma_range,spacing):
     n    = x.shape[0]
 
     for jj in range(f_out.shape[0]):
-        kernel = hermitegaussian(coeffs[jj,:],x,sigma)
+        kernel = hermitegaussian(coeffs[jj,:],x,sigma[jj])
         # L1 normalize the kernel so the total flux is conserved
         kernel /= np.sum(kernel)
         f_out[jj] = np.dot(f_in[max(0,jj-centering):min(size,jj+n-centering)]\
@@ -200,29 +209,36 @@ class Detector:
         self.sigma_range   = 5.0
         self.resolution   = resolution
         self.lsf_const_coeffs = [1.0]
-        self.sigma      = 1.0/resolution
+        # self.sigma      = 1.0/resolution
+
+        self.lsf_centering = 'centered'
 
         self.transmission_cutoff = 10.
 
-    # def resolution():
-    #     doc = "The resolution property."
-    #     def fget(self):
-    #         return self._resolution
-    #     def fset(self, value):
-    #         if len(value) == 1:
-    #             self._resolution = value
-    #         if value.shape == self.wave_grid.shape:
-    #             self._resolution = value
-    #         else:
-    #             logging.error('resolution grid needs to be the same \
-    #                             shape as the wave_grid')
-    #         del self.sigma
-    #         del self.kernel
-    #     def fdel(self):
-    #         logging.warn('overwriting resolution')
-    #         del self._resolution
-    #     return locals()
-    # resolution = property(**resolution())
+    def res(self,wavelength):
+        if isinstance(self._resolution, float):
+            return self._resolution * np.ones(wavelength.shape)
+        elif hasattr(self._resolution, '__call__'):
+            return self._resolution(wavelength)
+        else:
+            logging.error('resolution has not been set.')
+            return 0
+
+    def resolution():
+        doc = "The resolution property."
+        def fset(self, value):
+            if isinstance(value,float):
+                self._resolution = value
+            elif hasattr(value, '__call__'):
+                self._resolution = value
+            else:
+                logging.error('resolution grid needs to be a single value \
+                                or a callable that takes wavelength as input')
+        def fdel(self):
+            logging.warn('overwriting resolution')
+            del self._resolution
+        return locals()
+    resolution = property(**resolution())
     #
     # def sigma():
     #     doc = "The sigma property."
@@ -252,6 +268,7 @@ class Detector:
     #     return locals()
     # kernel = property(**kernel())
     #
+
     def transmission():
         doc = "The transmission property."
         def fget(self):
@@ -430,9 +447,9 @@ class Detector:
                 trans_arrs[j,i,:] = interpolate(xs,np.log(trans_wave[j][i][:].to(u.Angstrom).value),trans_flux[j][i][:])
         print('combining grids...')
         data['theory']['interpolated']['star']['flux'] = stellar_arr
-        fs = stellar_arr.copy()
+        fs        = stellar_arr.copy()
         flux_unit = flux_stellar.unit
-        mask_the = np.zeros(fs.shape,dtype=bool)
+        mask_the  = np.zeros(fs.shape,dtype=bool)
         for j,model in enumerate(self.transmission_models):
             # print("fs: ", fs.shape)
             fs *= trans_arrs[j,:,:]
@@ -445,10 +462,10 @@ class Detector:
 
         # Convolving using Hermite Coeffs
         #################################################
-        self.lsf_coeffs = np.outer(np.ones((fs.shape[1],len(self.lsf_const_coeffs))), self.lsf_const_coeffs)
         # should be an array that can vary over pixel j or hermite m
-        self.lsf_centering = 'centered'
         print('convolving...')
+        self.lsf_coeffs = np.outer(np.ones((fs.shape[1],len(self.lsf_const_coeffs))), self.lsf_const_coeffs)
+
         class ConvolveIter:
             def __init__(obj,fs):
                 obj.fs = fs
@@ -464,7 +481,9 @@ class Detector:
                 if obj._i == fs.shape[0]:
                     raise StopIteration
                 print(obj._i)
-                output = (fs[obj._i,:], self.lsf_coeffs,self.lsf_centering,self.sigma,self.sigma_range,new_step_size)
+                output = (fs[obj._i,:], self.lsf_coeffs,\
+                        self.lsf_centering,1./self.res(np.exp(xs) * u.Angstrom),\
+                        self.sigma_range,new_step_size)
                 obj._i += 1
                 return output
 
@@ -555,12 +574,3 @@ class Detector:
             data['parameters'][model._name] = dict_of_attr(data['parameters'][model._name],model)
         print('done.')
         return data
-
-def dict_of_attr(data,obj):
-    obj_list = [a for a in dir(obj) if not a.startswith('__')]
-    for ele in obj_list:
-        try:
-            data[ele] = getattr(obj, ele)
-        except AttributeError:
-            pass
-    return data

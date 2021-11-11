@@ -43,7 +43,7 @@ def download_phoenix_wave(outdir):
         return outname
 
 def download_phoenix_model(star,outdir=None):
-    directories = ['data','HiResFITS','PHOENIX-ACES-AGSS-COND-2011','Z{:+.1f}'.format(star.z)]
+    directories = ['HiResFITS','PHOENIX-ACES-AGSS-COND-2011','Z{:+.1f}'.format(star.z)]
     # print(directories)
     if star.alpha != 0.0:
         directories[-1] += '.Alpha={:+.2f}'.format(star.alpha)
@@ -61,7 +61,7 @@ def download_phoenix_model(star,outdir=None):
         ftp = FTP('phoenix.astro.physik.uni-goettingen.de') #logs in
         ftp.login()
     #     for directory in directories:
-        print("ftp: {}\nfilename: {}\ndirs: {}".format(ftp, filename,directories))
+        print("ftp: {}\nfilename: {}\ndirs: {}".format(ftp, filename, directories))
         ftp.cwd(os.path.join(*directories))
         ftp.retrlines('LIST')
 

@@ -368,11 +368,15 @@ class Detector:
         print('interpolating spline...')
         stellar_arr = np.empty((epoches,xs.shape[0]))
         trans_arrs  = np.empty((len(self.transmission_models),epoches,xs.shape[0]))
-        for i in range(epoches):
-            print(i)
-            stellar_arr[i,:] = self.interpolate_grid(xs + deltas[i],np.log(wave_stellar.to(u.Angstrom).value),flux_stellar[i,:].to(u.erg/u.s/u.cm**3).value)
-            for j,model in enumerate(self.transmission_models):
-                trans_arrs[j,i,:] = self.interpolate_grid(xs,np.log(trans_wave[j][i][:].to(u.Angstrom).value),trans_flux[j][i][:])
+
+        stellar_arr = self.interpolate_grid(np.add.outer(deltas, xs),np.outer(np.ones(epoches),np.log(wave_stellar.to(u.Angstrom).value)),flux_stellar.to(u.erg/u.s/u.cm**3).value)
+        for j, model in enumerate(self.transmission_models):
+            trans_arrs[j,:,:] = self.interpolate_grid(np.outer(np.ones(epoches),xs),[np.log(x.to(u.Angstrom).value) for x in trans_wave[j][:]],trans_flux[j])
+        # for i in range(epoches):
+        #     print(i)
+        #     stellar_arr[i,:] = self.interpolate_grid(xs + deltas[i],np.log(wave_stellar.to(u.Angstrom).value),flux_stellar[i,:].to(u.erg/u.s/u.cm**3).value)
+        #     for j,model in enumerate(self.transmission_models):
+        #         trans_arrs[j,i,:] = self.interpolate_grid(xs,np.log(trans_wave[j][i][:].to(u.Angstrom).value),trans_flux[j][i][:])
         print('combining grids...')
         data['theory']['interpolated']['star']['flux'] = stellar_arr
         fs        = stellar_arr.copy()
@@ -488,8 +492,20 @@ class Detector:
         return f_lsf
 
     def interpolate_grid(self,xs,x,f):
-        spline = interp.CubicSpline(x,f)
-        return spline(xs)
+        '''
+            This function takes in the new grid xs and the x and flux arrays output
+            by the TheoryModels then interpolates them. If you want to write in
+            your own interpolation. Just note that all values coming in are 2d.
+            sometimes the first layer is a list because the TheoryModel spit out
+            different shapes of flux depending on internal parameters.
+
+            Parameters:
+            xs: new grid to interpolate to. 2D ij. i: epoch dimension, j: pixel dimension
+        '''
+        fs = np.zeros(xs.shape)
+        for i in range(xs.shape[0]):
+            fs[i,:] = interp.CubicSpline(x[i],f[i])(xs[i,:])
+        return fs
 
     def interpolate_data(self,xs,x,f):
         dx = average_difference(x)

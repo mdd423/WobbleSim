@@ -546,7 +546,7 @@ class Detector:
         return n
 
 def even_wave_grid(wave_min,wave_max,resolution):
-    delta_x = simulacra.detector.spacing_from_res(4*resolution)
+    delta_x = spacing_from_res(4*resolution)
     x_grid = np.arange(np.log(wave_min.to(u.Angstrom).value),np.log(wave_max.to(u.Angstrom).value),delta_x)
     wave_grid = np.exp(x_grid) * u.Angstrom
     return wave_grid

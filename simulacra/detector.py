@@ -9,9 +9,21 @@ import numpy.random as random
 import logging
 
 from simulacra.dataset import DetectorData
+import simulacra.lanczos
+import simulacra.convolve
+
 
 from itertools import repeat
 from multiprocessing import Pool
+
+def dict_of_attr(data,obj):
+    obj_list = [a for a in dir(obj) if not a.startswith('__')]
+    for ele in obj_list:
+        try:
+            data[ele] = getattr(obj, ele)
+        except AttributeError:
+            pass
+    return data
 
 def get_median_difference(x):
 
@@ -41,67 +53,11 @@ def stretch(x,epoches,epsilon=0.01):
         x[i,:] *= ms
     return x,m
 
-def hermitegaussian(coeffs,x,sigma):
-    xhat = (x/sigma)
-    herms = np.polynomial.hermite.Hermite(coeffs)
-    return herms(xhat) * np.exp(-xhat**2)
 
-def continuous_convolve(kernels,obj):
-    out = np.empty(obj.shape)
-    for i in range(kernels.shape[0]):
-        out[jj] = np.dot(obj[max(0,jj-centering):min(size,jj+n-centering)], kernels[i,max(0,centering-jj):min(n,size-jj+centering)])
-    return out
-
-
-def convolve_hermites(f_in,coeffs,center_kw,sigma,sigma_range,spacing):
-    x = np.arange(-sigma_range * sigma,sigma_range * sigma,step=spacing)
-
-    if center_kw == 'centered':
-        centering = int(x.shape[0]/2)
-    elif center_kw == 'right':
-        centering = 0
-    elif center_kw == 'left':
-        centering = x.shape[0]-1
-    else:
-        print('setting lsf centering to middle')
-        centering = int(x.shape[0]/2)
-
-    f_out = np.empty(f_in.shape)
-    size = f_in.shape[0]
-    n    = x.shape[0]
-
-    for jj in range(f_out.shape[0]):
-        kernel = hermitegaussian(coeffs[jj,:],x,sigma)
-        # L1 normalize the kernel so the total flux is conserved
-        kernel /= np.sum(kernel)
-        f_out[jj] = np.dot(f_in[max(0,jj-centering):min(size,jj+n-centering)]\
-                                    ,kernel[max(0,centering-jj):min(n,size-jj+centering)])
-    return f_out
 
 def interpolate(x,xs,ys):
     spline = interp.CubicSpline(xs,ys)
     return spline(x)
-
-def lanczos_interpolation(x,xs,ys,dx,a=4):
-    x0 = xs[0]
-    y = np.zeros(x.shape)
-    v_lanczos = np.vectorize(lanczos_kernel)
-    for i,x_value in enumerate(x):
-        # which is basically the same as sample=x[j-a+1] to x[j+a]
-        # where j in this case is the nearest index xs_j to x_value
-        sample_min,sample_max = max(0,abs(x_value-x0)//dx - a + 1),min(xs.shape[0],abs(x_value-x0)//dx + a)
-        samples = np.arange(sample_min,sample_max,dtype=int)
-        # y[i]/ = v_lanczos((x_value - xs[samples])/dx,a).sum()
-        for sample in samples:
-            y[i] += ys[sample] * lanczos_kernel((x_value - xs[sample])/dx,a)
-    return y
-
-def lanczos_kernel(x,a):
-    if x == 0:
-        return 1
-    if x > -a and x < a:
-        return a*np.sin(np.pi*u.radian*x) * np.sin(np.pi*u.radian*x/a)/(np.pi**2 * x**2)
-    return 0
 
 def average_difference(x):
     return np.mean([t - s for s, t in zip(x, x[1:])])
@@ -133,23 +89,42 @@ def add_noise(f_exp,snr_grid):
             f_readout[i,j] = f_exp[i,j] + random.normal(0.0,f_exp[i,j]/snr_grid[i,j])
     return f_readout
 
-def signal_to_noise_ratio(detector,flux,exp_times):
-    xs,ys = np.where(flux < 0)
-    for x,y in zip(xs,ys):
-        flux[x,y] = 0
+# def signal_to_noise_ratio(detector,flux,exp_times):
+#     xs,ys = np.where(flux < 0)
+#     for x,y in zip(xs,ys):
+#         flux[x,y] = 0
+#
+#     snr = np.empty(flux.shape)
+#     for i in range(snr.shape[0]):
+#         for j in range(snr.shape[1]):
+#             # if j % 500 == 0:
+#             #     print(detector.read_noise[j], (detector.dark_current[j] * exp_times[i]).to(1), detector.ccd_eff[j] * flux[i,j])
+#             # implicitly flux is already dependent on exposure time
+#             snr[i,j] = detector.ccd_eff[j] * flux[i,j] \
+#             / (detector.gamma * np.sqrt(detector.read_noise[j] + detector.dark_current[j] * exp_times[i] + detector.ccd_eff[j] * flux[i,j]))
+#     return snr
 
-    snr = np.empty(flux.shape)
-    for i in range(snr.shape[0]):
-        for j in range(snr.shape[1]):
-            # if j % 500 == 0:
-            #     print(detector.read_noise[j], (detector.dark_current[j] * exp_times[i]).to(1), detector.ccd_eff[j] * flux[i,j])
-            # implicitly flux is already dependent on exposure time
-            snr[i,j] = detector.ccd_eff[j] * flux[i,j] \
-            / (detector.gamma * np.sqrt(detector.read_noise[j] + detector.dark_current[j] * exp_times[i] + detector.ccd_eff[j] * flux[i,j]))
-    return snr
-
-def get_masks(xs,mask_the,x_hat):
+def interpolate_mask(xs,mask_the,x_hat):
     return np.array([interp.interp1d(xs,mask_the[i,:].astype(float),kind='nearest')(x_hat[i,:]) for i in range(x_hat.shape[0])]).astype(bool)
+
+def check_type(value,type):
+    if isinstance(value,u.Quantity):
+        if value.unit.physical_type in u.get_physical_type(type.unit):
+            pass
+        else:
+            logging.error('must be in a units of {}.\nor will be assumed to be in units of photons per second.'.format(type))
+    else:
+        value *= type
+    return value
+
+def check_shape(value,shape):
+    if hasattr(value,'shape'):
+        if len(value.shape) == 0:
+            return value * np.ones(shape)
+        elif value.shape == shape:
+            return value
+    else:
+        return value * np.ones(shape)
 
 
 class Detector:
@@ -201,58 +176,37 @@ class Detector:
         self.sigma_range   = 5.0
         self.resolution   = resolution
         self.lsf_const_coeffs = [1.0]
-        self.sigma      = 1.0/resolution
+        # self.sigma      = 1.0/resolution
+
+        self.lsf_centering = 'centered'
 
         self.transmission_cutoff = 10.
 
-    # def resolution():
-    #     doc = "The resolution property."
-    #     def fget(self):
-    #         return self._resolution
-    #     def fset(self, value):
-    #         if len(value) == 1:
-    #             self._resolution = value
-    #         if value.shape == self.wave_grid.shape:
-    #             self._resolution = value
-    #         else:
-    #             logging.error('resolution grid needs to be the same \
-    #                             shape as the wave_grid')
-    #         del self.sigma
-    #         del self.kernel
-    #     def fdel(self):
-    #         logging.warn('overwriting resolution')
-    #         del self._resolution
-    #     return locals()
-    # resolution = property(**resolution())
-    #
-    # def sigma():
-    #     doc = "The sigma property."
-    #     def fget(self):
-    #         return self._sigma
-    #     def fset(self, value):
-    #         self._sigma = value
-    #         del self.kernel
-    #         del self.resolution
-    #     def fdel(self):
-    #         logging.warn('overwriting resolution')
-    #         del self._sigma
-    #     return locals()
-    # sigma = property(**sigma())
-    #
-    # def kernel():
-    #     doc = "The kernel property."
-    #     def fget(self):
-    #         return self._kernel
-    #     def fset(self, value):
-    #         self._kernel = value
-    #         del self.resolution
-    #         del self.sigma
-    #     def fdel(self):
-    #         logging.warn('overwriting kernel')
-    #         del self._kernel
-    #     return locals()
-    # kernel = property(**kernel())
-    #
+    def res(self,wavelength):
+        if isinstance(self._resolution, float):
+            return self._resolution * np.ones(wavelength.shape)
+        elif hasattr(self._resolution, '__call__'):
+            return self._resolution(wavelength)
+        else:
+            logging.error('resolution has not been set.')
+            return 0
+
+    def resolution():
+        doc = "The resolution property."
+        def fset(self, value):
+            if isinstance(value,float):
+                self._resolution = value
+            elif hasattr(value, '__call__'):
+                self._resolution = value
+            else:
+                logging.error('resolution grid needs to be a single value \
+                                or a callable that takes wavelength as input')
+        def fdel(self):
+            logging.warn('overwriting resolution')
+            del self._resolution
+        return locals()
+    resolution = property(**resolution())
+
     def transmission():
         doc = "The transmission property."
         def fget(self):
@@ -323,11 +277,8 @@ class Detector:
         def fget(self):
             return self._ccd_eff
         def fset(self, value):
-            try:
-                temp = iter(value)
-                self._ccd_eff = value
-            except TypeError:
-                self._ccd_eff = value * np.ones(self.wave_grid.shape)
+            value = check_shape(value,self.wave_grid.shape)
+            self._ccd_eff = value
         def fdel(self):
             del self._ccd_eff
         return locals()
@@ -338,11 +289,9 @@ class Detector:
         def fget(self):
             return self._dark_current
         def fset(self, value):
-            try:
-                temp = iter(value)
-                self._dark_current = value
-            except TypeError:
-                self._dark_current = value * np.ones(self.wave_grid.shape)
+            value = check_type(value,1/u.s)
+            value = check_shape(value,self.wave_grid.shape)
+            self._dark_current = value
         def fdel(self):
             del self._dark_current
         return locals()
@@ -353,11 +302,8 @@ class Detector:
         def fget(self):
             return self._read_noise
         def fset(self, value):
-            try:
-                temp = iter(value)
-                self._read_noise = value
-            except TypeError:
-                self._read_noise = value * np.ones(self.wave_grid.shape)
+            value = check_shape(value,self.wave_grid.shape)
+            self._read_noise = value
         def fdel(self):
             del self._read_noise
         return locals()
@@ -426,14 +372,14 @@ class Detector:
         trans_arrs  = np.empty((len(self.transmission_models),epoches,xs.shape[0]))
         for i in range(epoches):
             print(i)
-            stellar_arr[i,:] = interpolate(xs + deltas[i],np.log(wave_stellar.to(u.Angstrom).value),flux_stellar[i,:].to(u.erg/u.s/u.cm**3).value)
+            stellar_arr[i,:] = self.interpolate_grid(xs + deltas[i],np.log(wave_stellar.to(u.Angstrom).value),flux_stellar[i,:].to(u.erg/u.s/u.cm**3).value)
             for j,model in enumerate(self.transmission_models):
-                trans_arrs[j,i,:] = interpolate(xs,np.log(trans_wave[j][i][:].to(u.Angstrom).value),trans_flux[j][i][:])
+                trans_arrs[j,i,:] = self.interpolate_grid(xs,np.log(trans_wave[j][i][:].to(u.Angstrom).value),trans_flux[j][i][:])
         print('combining grids...')
         data['theory']['interpolated']['star']['flux'] = stellar_arr
-        fs = stellar_arr.copy()
+        fs        = stellar_arr.copy()
         flux_unit = flux_stellar.unit
-        mask_the = np.zeros(fs.shape,dtype=bool)
+        mask_the  = np.zeros(fs.shape,dtype=bool)
         for j,model in enumerate(self.transmission_models):
             # print("fs: ", fs.shape)
             fs *= trans_arrs[j,:,:]
@@ -446,84 +392,41 @@ class Detector:
 
         # Convolving using Hermite Coeffs
         #################################################
-        self.lsf_coeffs = np.outer(np.ones((fs.shape[1],len(self.lsf_const_coeffs))), self.lsf_const_coeffs)
         # should be an array that can vary over pixel j or hermite m
-        self.lsf_centering = 'centered'
         print('convolving...')
-        class ConvolveIter:
-            def __init__(obj,fs):
-                obj.fs = fs
-                obj._i =  0
-
-            def __iter__(obj):
-                # output = (fs[obj._i,:], self.lsf_coeffs,self.lsf_centering,self.sigma,self.sigma_range,new_step_size)
-                obj._i = 0
-                return obj
-
-            def __next__(obj):
-
-                if obj._i == fs.shape[0]:
-                    raise StopIteration
-                print(obj._i)
-                output = (fs[obj._i,:], self.lsf_coeffs,self.lsf_centering,self.sigma,self.sigma_range,new_step_size)
-                obj._i += 1
-                return output
-
-        with Pool() as pool:
-            obj = ConvolveIter(fs)
-            M = pool.starmap(convolve_hermites, obj)
-        f_lsf = np.asarray(M)
+        f_lsf = self.convolve(xs,fs,new_step_size)
 
         data['theory']['lsf'] = {}
         data['theory']['lsf']['flux'] = f_lsf
 
         # Generate transform wavelength grid using jitter & stretch
         ##################################################
-        x           = np.log(self.wave_grid.to(u.Angstrom).value)#np.arange(self.xmin,self.xmax,step=res_step_size)
-        x_hat, m    = stretch(x,epoches,self.epsilon)
-        x_hat, delt = jitter(x,epoches,self.w)
+        x                    = np.log(self.wave_grid.to(u.Angstrom).value)#np.arange(self.xmin,self.xmax,step=res_step_size)
+        x_hat, wt_parameters = self.wave_transform(x,obs_times,exp_times)
+        # x_hat, m    = stretch(x,epoches,self.epsilon)
+        # x_hat, delt = jitter(x,epoches,self.w)
         data['parameters'] = {}
-        data['parameters']['wavetransform'] = {}
-        data['parameters']['wavetransform']['m'] = m
-        data['parameters']['wavetransform']['delt'] = delt
+        data['parameters']['wavetransform'] = wt_parameters
+        # data['parameters']['wavetransform']['m'] = m
+        # data['parameters']['wavetransform']['delt'] = delt
 
         print('xs: {} {}\nxhat: {} {}'.format(np.exp(np.min(xs)),np.exp(np.max(xs)),np.exp(np.min(x_hat)),np.exp(np.max(x_hat))))
-        data_mask = get_masks(xs,mask_the,x_hat)
+        data_mask = interpolate_mask(xs,mask_the,x_hat)
         data['data']['mask'] = data_mask
 
         # Interpolate using Lanczos and Add Noise
         ##################################################
         print('interpolating lanczos...')
-        class LanczosIter:
-            def __init__(obj):
-
-                obj._i =  0
-
-            def __iter__(obj):
-                # output = (fs[obj._i,:], self.lsf_coeffs,self.lsf_centering,self.sigma,self.sigma_range,new_step_size)
-                obj._i = 0
-                return obj
-
-            def __next__(obj):
-                if obj._i == f_lsf.shape[0]:
-                    raise StopIteration
-                print(obj._i)
-                output = (x_hat[obj._i,:],xs,f_lsf[obj._i,:],new_step_size,self.a)
-                obj._i += 1
-                return output
-
-        with Pool() as pool:
-            obj = LanczosIter()
-            M = pool.starmap(lanczos_interpolation, obj)
-        f_exp = np.asarray(M)
+        f_exp = self.interpolate_data(x_hat,xs,f_lsf)
 
         print('area: {}\t avg d lambda: {}\t avg lambda: {}\t avg exp times: {}'.format(self.area,np.mean(self.wave_difference),np.mean(self.wave_grid),np.mean(exp_times)))
-        n_exp = self.through_put * (self.area/(const.hbar * const.c)*np.einsum('ij,j,j,i->ij',f_exp * flux_unit, self.wave_difference,self.wave_grid,exp_times)).to(1)
+        n_exp = self.energy_to_photon(f_exp * flux_unit, exp_times)
+        # n_exp = self.through_put * (self.area/(const.hbar * const.c)*np.einsum('ij,j,j,i->ij',f_exp * flux_unit, self.wave_difference,self.wave_grid,exp_times)).to(1)
         for i in range(n_exp.shape[0]):
             print('{} n mean: {:3.2e}\t n median: {:3.2e}'.format(i,np.mean(n_exp[i,~data_mask[i,:]]),np.median(n_exp[i,~data_mask[i,:]])))
 
         print('generating true signal to noise ratios...')
-        snr_grid = signal_to_noise_ratio(self,n_exp,exp_times)
+        snr_grid = self.signal_to_noise_ratio(n_exp,exp_times)
         print('adding noise...')
         out_shape = snr_grid.shape
         n_readout = add_noise_v(n_exp.flatten().value,snr_grid.flatten()).reshape(out_shape)
@@ -536,7 +439,7 @@ class Detector:
         # Get Error Bars
         ###################################################
         print('generating exp signal to noise ratios...')
-        snr_readout = signal_to_noise_ratio(self,n_readout,exp_times)
+        snr_readout = self.signal_to_noise_ratio(n_readout,exp_times)
         print('generating errors...')
         nerr_out = generate_errors_v(n_readout.flatten(),snr_readout.flatten()).reshape(out_shape)
 
@@ -557,11 +460,85 @@ class Detector:
         print('done.')
         return data
 
-def dict_of_attr(data,obj):
-    obj_list = [a for a in dir(obj) if not a.startswith('__')]
-    for ele in obj_list:
-        try:
-            data[ele] = getattr(obj, ele)
-        except AttributeError:
-            pass
-    return data
+    def convolve(self,xs,fs,dx):
+        self.lsf_coeffs = np.outer(np.ones((fs.shape[1],len(self.lsf_const_coeffs))), self.lsf_const_coeffs)
+        class ConvolveIter:
+            def __init__(obj,fs):
+                obj.fs = fs
+                obj._i =  0
+
+            def __iter__(obj):
+                # output = (fs[obj._i,:], self.lsf_coeffs,self.lsf_centering,self.sigma,self.sigma_range,new_step_size)
+                obj._i = 0
+                return obj
+
+            def __next__(obj):
+
+                if obj._i == fs.shape[0]:
+                    raise StopIteration
+                print(obj._i)
+                output = (fs[obj._i,:], self.lsf_coeffs,\
+                        self.lsf_centering,1./self.res(np.exp(xs) * u.Angstrom),\
+                        self.sigma_range,dx)
+                obj._i += 1
+                return output
+
+        with Pool() as pool:
+            obj = ConvolveIter(fs)
+            M = pool.starmap(simulacra.convolve.convolve_hermites, obj)
+        f_lsf = np.asarray(M)
+        return f_lsf
+
+    def interpolate_grid(self,xs,x,f):
+        spline = interp.CubicSpline(x,f)
+        return spline(xs)
+
+    def interpolate_data(self,xs,x,f):
+        dx = average_difference(x)
+        class LanczosIter:
+            def __init__(obj):
+
+                obj._i =  0
+
+            def __iter__(obj):
+                # output = (fs[obj._i,:], self.lsf_coeffs,self.lsf_centering,self.sigma,self.sigma_range,new_step_size)
+                obj._i = 0
+                return obj
+
+            def __next__(obj):
+                if obj._i == f.shape[0]:
+                    raise StopIteration
+                print(obj._i)
+                output = (xs[obj._i,:],x,f[obj._i,:],dx,self.a)
+                obj._i += 1
+                return output
+
+        with Pool() as pool:
+            obj = LanczosIter()
+            M = pool.starmap(simulacra.lanczos.lanczos_interpolation, obj)
+        f_exp = np.asarray(M)
+        return f_exp
+
+    def wave_transform(self,x,obs_times,exp_times):
+        epoches = obs_times.shape[0]
+        x_hat, m    = stretch(x,epoches,self.epsilon)
+        x_hat, delt = jitter(x,epoches,self.w)
+        parameters = {'m':m,'delt':delt}
+        return x_hat, parameters
+
+    def signal_to_noise_ratio(self,flux,exp_times):
+        xs,ys = np.where(flux < 0)
+        for x,y in zip(xs,ys):
+            flux[x,y] = 0
+
+        snr = np.empty(flux.shape)
+        for i in range(snr.shape[0]):
+            for j in range(snr.shape[1]):
+                # implicitly flux is already dependent on exposure time
+                snr[i,j] = self.ccd_eff[j] * flux[i,j] \
+                / (self.gamma * np.sqrt(self.read_noise[j] + self.dark_current[j] * exp_times[i] + self.ccd_eff[j] * flux[i,j]))
+        return snr
+
+    def energy_to_photon(self,flux,exp_times):
+        n = self.through_put * (self.area/(const.hbar * const.c)*np.einsum('ij,j,j,i->ij',flux, self.wave_difference,self.wave_grid,exp_times)).to(1)
+        return n

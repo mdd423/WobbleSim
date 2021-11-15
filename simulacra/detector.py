@@ -578,12 +578,12 @@ expres_dict = {'resolution':130_000.0,
             'wave_grid':even_wave_grid(700*u.nm,950*u.nm,130_000.0),
             'loc':coord.EarthLocation.of_site('Lowell Observatory')}
 
-apogee_det = Detector(**apogee_dict)
-apogee_det.add_model(simulacra.tellurics.TelFitModel(loc=apogee_det.loc,lambmin=apogee_det.lambmin,lambmax=apogee_det.lambmax))
-
-keck_det = Detector(**keck_dict)
-keck_det.add_model(simulacra.tellurics.TelFitModel(loc=keck_det.loc,lambmin=keck_det.lambmin,lambmax=keck_det.lambmax))
-keck_det.add_model(simulacra.gascell.GasCellModel())
-
-expres_det = Detector(**expres_dict)
-expres_det.add_model(simulacra.tellurics.TelFitModel(loc=expres_det.loc,lambmin=expres_det.lambmin,lambmax=expres_det.lambmax))
+# apogee_det = Detector(**apogee_dict)
+# apogee_det.add_model(simulacra.tellurics.TelFitModel(loc=apogee_det.loc,lambmin=apogee_det.lambmin,lambmax=apogee_det.lambmax))
+#
+# keck_det = Detector(**keck_dict)
+# keck_det.add_model(simulacra.tellurics.TelFitModel(loc=keck_det.loc,lambmin=keck_det.lambmin,lambmax=keck_det.lambmax))
+# keck_det.add_model(simulacra.gascell.GasCellModel())
+#
+# expres_det = Detector(**expres_dict)
+# expres_det.add_model(simulacra.tellurics.TelFitModel(loc=expres_det.loc,lambmin=expres_det.lambmin,lambmax=expres_det.lambmax))

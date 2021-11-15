@@ -2,6 +2,8 @@ import numpy as np
 import astropy.units as u
 import astropy.constants as const
 import astropy.time as at
+import astropy.coordinates as coord
+
 import scipy.interpolate as interp
 import scipy.ndimage as img
 import scipy.sparse

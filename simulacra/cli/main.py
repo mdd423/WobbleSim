@@ -22,6 +22,7 @@ import astropy.coordinates as coord
 import astropy.units as u
 import astropy.time as at
 random.seed(102102102)
+np.random.seed(102102102)
 
 def run_simulation(detector,transmission_models,exp_times,epoches,window):
     # parser args into these constants and filename
@@ -63,6 +64,8 @@ def get_parser():
 
     parser.add_argument('--window',type=float,default=180,help='Time in days to observe the star over')
     parser.add_argument('--exp_time',type=float,default=8,help='Time in minutes of each exposure')
+
+    parser.add_argument('-o','--output',type=str,default='../../out',help='Output directory, default assumes you are in the home directory of this package.')
     return parser
 
 def add_tellurics_args(parser):
@@ -143,14 +146,14 @@ class CLI:
 
         exp_times = np.ones(args.epoches)*args.exp_time * u.minute
 
-        delta_x = simulacra.detector.spacing_from_res(1.4*det_dict['resolution'])
+        delta_x = simulacra.detector.spacing_from_res(4*det_dict['resolution'])
         x_grid = np.arange(np.log(wave_min.to(u.Angstrom).value),np.log(wave_max.to(u.Angstrom).value),delta_x)
         wave_grid = np.exp(x_grid) * u.Angstrom
 
         detector = simulacra.detector.Detector(stellar_model,loc=loc,wave_grid=wave_grid,**det_dict)
         data = run_simulation(detector,[tellurics_model],exp_times,args.epoches,args.window)
 
-        filename = 'out/apogee_e{}_a{}_p{}'.format(args.epoches,stellar_model.amplitude.to(u.m/u.s).value,stellar_model.period.to(u.day).value)
+        filename = os.path.join(args.output,'apogee_e{}_a{}_p{}'.format(args.epoches,stellar_model.amplitude.to(u.m/u.s).value,stellar_model.period.to(u.day).value))
         print(filename)
         data.to_h5(filename + '.h5')
 
@@ -189,13 +192,13 @@ class CLI:
 
         exp_times = np.ones(args.epoches)*args.exp_time * u.minute
 
-        delta_x = simulacra.detector.spacing_from_res(1.4*det_dict['resolution'])
+        delta_x = simulacra.detector.spacing_from_res(4*det_dict['resolution'])
         x_grid = np.arange(np.log(wave_min.to(u.Angstrom).value),np.log(wave_max.to(u.Angstrom).value),delta_x)
         wave_grid = np.exp(x_grid) * u.Angstrom
 
         detector = simulacra.detector.Detector(stellar_model,loc=loc,wave_grid=wave_grid,**det_dict)
         data = run_simulation(detector,[tellurics_model,gascell_model],exp_times,args.epoches,args.window)
-        filename = 'out/keck_e{}_a{}_p{}'.format(args.epoches,stellar_model.amplitude.to(u.m/u.s).value,stellar_model.period.to(u.day).value)
+        filename = os.path.join(args.output,'keck_e{}_a{}_p{}'.format(args.epoches,stellar_model.amplitude.to(u.m/u.s).value,stellar_model.period.to(u.day).value))
         print(filename)
         data.to_h5(filename + '.h5')
 
@@ -230,14 +233,14 @@ class CLI:
 
         exp_times = np.ones(args.epoches)*args.exp_time * u.minute
 
-        delta_x = simulacra.detector.spacing_from_res(1.4*det_dict['resolution'])
+        delta_x = simulacra.detector.spacing_from_res(4*det_dict['resolution'])
         x_grid = np.arange(np.log(wave_min.to(u.Angstrom).value),np.log(wave_max.to(u.Angstrom).value),delta_x)
         wave_grid = np.exp(x_grid) * u.Angstrom
 
         detector = simulacra.detector.Detector(stellar_model,loc=loc,wave_grid=wave_grid,**det_dict)
         data = run_simulation(detector,[tellurics_model],exp_times,args.epoches,args.window)
 
-        filename = 'out/expres_e{}_a{}_p{}'.format(args.epoches,stellar_model.amplitude.to(u.m/u.s).value,stellar_model.period.to(u.day).value)
+        filename = os.path.join(args.output,'expres_e{}_a{}_p{}'.format(args.epoches,stellar_model.amplitude.to(u.m/u.s).value,stellar_model.period.to(u.day).value))
         print(filename)
         data.to_h5(filename + '.h5')
 
@@ -250,11 +253,11 @@ for name, attr in CLI.__dict__.items():
         cmds.append(f'    {name.ljust(maxlen)}  {attr.__doc__}\n')
 
 CLI._usage = f"""
-hq <command> [<args>]
+simulacra <command> [<args>]
 Available commands:
 {''.join(cmds)}
 See more usage information about a given command by running:
-    hq <command> --help
+    simulacra <command> --help
 """
 
 # keck hires, gaia, apogee, expres

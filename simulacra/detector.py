@@ -16,6 +16,7 @@ import simulacra.convolve
 from itertools import repeat
 from multiprocessing import Pool
 
+
 def dict_of_attr(data,obj):
     obj_list = [a for a in dir(obj) if not a.startswith('__')]
     for ele in obj_list:
@@ -88,21 +89,6 @@ def add_noise(f_exp,snr_grid):
         for j in range(f_exp.shape[1]):
             f_readout[i,j] = f_exp[i,j] + random.normal(0.0,f_exp[i,j]/snr_grid[i,j])
     return f_readout
-
-# def signal_to_noise_ratio(detector,flux,exp_times):
-#     xs,ys = np.where(flux < 0)
-#     for x,y in zip(xs,ys):
-#         flux[x,y] = 0
-#
-#     snr = np.empty(flux.shape)
-#     for i in range(snr.shape[0]):
-#         for j in range(snr.shape[1]):
-#             # if j % 500 == 0:
-#             #     print(detector.read_noise[j], (detector.dark_current[j] * exp_times[i]).to(1), detector.ccd_eff[j] * flux[i,j])
-#             # implicitly flux is already dependent on exposure time
-#             snr[i,j] = detector.ccd_eff[j] * flux[i,j] \
-#             / (detector.gamma * np.sqrt(detector.read_noise[j] + detector.dark_current[j] * exp_times[i] + detector.ccd_eff[j] * flux[i,j]))
-#     return snr
 
 def interpolate_mask(xs,mask_the,x_hat):
     return np.array([interp.interp1d(xs,mask_the[i,:].astype(float),kind='nearest')(x_hat[i,:]) for i in range(x_hat.shape[0])]).astype(bool)
@@ -370,11 +356,15 @@ class Detector:
         print('interpolating spline...')
         stellar_arr = np.empty((epoches,xs.shape[0]))
         trans_arrs  = np.empty((len(self.transmission_models),epoches,xs.shape[0]))
-        for i in range(epoches):
-            print(i)
-            stellar_arr[i,:] = self.interpolate_grid(xs + deltas[i],np.log(wave_stellar.to(u.Angstrom).value),flux_stellar[i,:].to(u.erg/u.s/u.cm**3).value)
-            for j,model in enumerate(self.transmission_models):
-                trans_arrs[j,i,:] = self.interpolate_grid(xs,np.log(trans_wave[j][i][:].to(u.Angstrom).value),trans_flux[j][i][:])
+
+        stellar_arr = self.interpolate_grid(np.add.outer(deltas, xs),np.outer(np.ones(epoches),np.log(wave_stellar.to(u.Angstrom).value)),flux_stellar.to(u.erg/u.s/u.cm**3).value)
+        for j, model in enumerate(self.transmission_models):
+            trans_arrs[j,:,:] = self.interpolate_grid(np.outer(np.ones(epoches),xs),[np.log(x.to(u.Angstrom).value) for x in trans_wave[j][:]],trans_flux[j])
+        # for i in range(epoches):
+        #     print(i)
+        #     stellar_arr[i,:] = self.interpolate_grid(xs + deltas[i],np.log(wave_stellar.to(u.Angstrom).value),flux_stellar[i,:].to(u.erg/u.s/u.cm**3).value)
+        #     for j,model in enumerate(self.transmission_models):
+        #         trans_arrs[j,i,:] = self.interpolate_grid(xs,np.log(trans_wave[j][i][:].to(u.Angstrom).value),trans_flux[j][i][:])
         print('combining grids...')
         data['theory']['interpolated']['star']['flux'] = stellar_arr
         fs        = stellar_arr.copy()
@@ -490,8 +480,20 @@ class Detector:
         return f_lsf
 
     def interpolate_grid(self,xs,x,f):
-        spline = interp.CubicSpline(x,f)
-        return spline(xs)
+        '''
+            This function takes in the new grid xs and the x and flux arrays output
+            by the TheoryModels then interpolates them. If you want to write in
+            your own interpolation. Just note that all values coming in are 2d.
+            sometimes the first layer is a list because the TheoryModel spit out
+            different shapes of flux depending on internal parameters.
+
+            Parameters:
+            xs: new grid to interpolate to. 2D ij. i: epoch dimension, j: pixel dimension
+        '''
+        fs = np.zeros(xs.shape)
+        for i in range(xs.shape[0]):
+            fs[i,:] = interp.CubicSpline(x[i],f[i])(xs[i,:])
+        return fs
 
     def interpolate_data(self,xs,x,f):
         dx = average_difference(x)
@@ -542,3 +544,46 @@ class Detector:
     def energy_to_photon(self,flux,exp_times):
         n = self.through_put * (self.area/(const.hbar * const.c)*np.einsum('ij,j,j,i->ij',flux, self.wave_difference,self.wave_grid,exp_times)).to(1)
         return n
+
+def even_wave_grid(wave_min,wave_max,resolution):
+    delta_x = simulacra.detector.spacing_from_res(4*resolution)
+    x_grid = np.arange(np.log(wave_min.to(u.Angstrom).value),np.log(wave_max.to(u.Angstrom).value),delta_x)
+    wave_grid = np.exp(x_grid) * u.Angstrom
+    return wave_grid
+
+apogee_dict = {'resolution':22_500.0,
+            'area': np.pi * (2.5*u.m/2)**2,
+            'dark_current': 100/u.s,
+            'read_noise': 100,
+            'ccd_eff':0.99,
+            'through_put':0.05,
+            'wave_grid':even_wave_grid(1.51*u.um,1.70*u.um,22_500.0),
+            'loc':coord.EarthLocation.of_site('APO')}
+
+keck_dict = {'resolution':100_000.0,
+            'area': np.pi * (10*u.m/2)**2,
+            'dark_current': 100/u.s,
+            'read_noise': 100,
+            'ccd_eff':0.99,
+            'through_put':0.05,
+            'wave_grid':even_wave_grid(500*u.nm,630*u.nm,100_000.0),
+            'loc':coord.EarthLocation.of_site('Keck Observatory')}
+
+expres_dict = {'resolution':130_000.0,
+            'area': np.pi * (4.3*u.m/2)**2,
+            'dark_current': 100/u.s,
+            'read_noise': 100,
+            'ccd_eff':0.99,
+            'through_put':0.05,
+            'wave_grid':even_wave_grid(700*u.nm,950*u.nm,130_000.0),
+            'loc':coord.EarthLocation.of_site('Lowell Observatory')}
+
+apogee_det = Detector(**apogee_dict)
+apogee_det.add_model(simulacra.tellurics.TelFitModel(loc=apogee_det.loc,lambmin=apogee_det.lambmin,lambmax=apogee_det.lambmax))
+
+keck_det = Detector(**keck_dict)
+keck_det.add_model(simulacra.tellurics.TelFitModel(loc=keck_det.loc,lambmin=keck_det.lambmin,lambmax=keck_det.lambmax))
+keck_det.add_model(simulacra.gascell.GasCellModel())
+
+expres_det = Detector(**expres_dict)
+expres_det.add_model(simulacra.tellurics.TelFitModel(loc=expres_det.loc,lambmin=expres_det.lambmin,lambmax=expres_det.lambmax))

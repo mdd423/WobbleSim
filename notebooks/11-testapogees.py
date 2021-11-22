@@ -5,7 +5,7 @@
 
 
 import sys
-sys.path.insert(0,'..')
+sys.path.insert(0,'/home/mdd423/WobbleSim')
 print(sys.path)
 import simulacra.star
 import simulacra.tellurics

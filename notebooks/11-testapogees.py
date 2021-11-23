@@ -104,7 +104,7 @@ if __name__ == '__main__':
     # In[10]:
 
 
-    distances = [100 * u.pc, 150 * u.pc, 200 * u.pc, 250 * u.pc, 300 * u.pc, 350 * u.pc, 400 * u.pc, 450 * u.pc, 500 * u.pc, 550 * u.pc, 750 * u.pc, 1 * u.kpc]
+    distances = [100 * u.pc, 200 * u.pc, 500 * u.pc, 750 * u.pc, 1 * u.kpc, 1.25 * u.kpc, 1.5 * u.kpc, 2 * u.kpc, 5 * u.kpc]
 
 
     # In[11]:

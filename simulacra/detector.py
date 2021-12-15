@@ -510,8 +510,9 @@ class NoisyDetector(Detector):
         doc = "The ccd_eff property."
         def fget(self):
             return self._ccd_eff
-        if hasattr(value,'__call__'):
-            self._ccd_eff = value
+        def fset(self, value):
+            if hasattr(value,'__call__'):
+                self._ccd_eff = value
         def fdel(self):
             del self._ccd_eff
         return locals()

@@ -161,17 +161,6 @@ class Detector:
         return locals()
     resolution = property(**resolution())
 
-    def transmission():
-        doc = "The transmission property."
-        def fget(self):
-            return self._transmission
-        def fset(self, value):
-            self._transmission = value
-        def fdel(self):
-            del self._transmission
-        return locals()
-    transmission = property(**transmission())
-
     def lambmin():
         doc = "The lambmin property."
         def fget(self):
@@ -246,7 +235,7 @@ class Detector:
         # print(maximums)
         return min(maximums)
 
-    def simulate(self,obs_times,t_exp=None,snrs=None,transmission=0.05,wavelength_trigger=None,*args,**kwargs):
+    def simulate(self,obs_times,t_exp=None,snrs=None,wavelength_trigger=None,*args,**kwargs):
         data = DetectorData()
         data['data'] = {}
         data['data']['obs_times'] = obs_times
@@ -261,7 +250,6 @@ class Detector:
             if not hasattr(snrs,'__iter__'):
                 snrs = snrs * np.ones(epoches)
             data['data']['snrs'] = snrs
-            data['data']['transmission'] = transmission
             data['data']['wavelength_trigger'] = wavelength_trigger
 
         # Generate Stellar Spectra
@@ -354,7 +342,7 @@ class Detector:
 
             t_exp = np.zeros(snrs.shape) * u.min
             for i,snr in enumerate(snrs):
-                t_exp[i] = self.trigger(P_exp[i,wt_index],snrs[i],w_hat[i,wt_index],transmission=transmission)
+                t_exp[i] = self.trigger(P_exp[i,wt_index],snrs[i],w_hat[i,wt_index])
         data['data']['t_exp'] = t_exp
 
         n_exp = np.empty(P_exp.shape)
@@ -479,11 +467,11 @@ class Detector:
 
         return np.repeat(x[np.newaxis,:],repeats=epoches,axis=0), None
 
-    def trigger(self,P,snr,wavelength,transmission=1.0):
+    def trigger(self,P,snr,wavelength):
         def func(*args):
             out = self.signal_to_noise(args[0] * u.min, *args[1:])
             return out - snr
-        res = scipy.optimize.root(func, 1.0, args=(transmission * P, wavelength))
+        res = scipy.optimize.root(func, 1.0, args=(P, wavelength))
         print(res.x.shape)
         return res.x[0] * u.min
 

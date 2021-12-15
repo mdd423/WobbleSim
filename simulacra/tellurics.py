@@ -135,8 +135,7 @@ class TelFitModel(TheoryModel):
         return locals()
     epoches = property(**epoches())
 
-    def generate_transmission(self,star,detector,obs_times,exp_times):
-        times = at.Time([obs_times[i] + exp_times[i]/2 for i in range(len(obs_times))])
+    def generate_transmission(self,star,detector,obs_times):
         telescope_frame = coord.AltAz(obstime=obs_times,location=detector.loc)
         secz = np.array(star.target.transform_to(telescope_frame).secz)
         # singlerun = self.epoches is None

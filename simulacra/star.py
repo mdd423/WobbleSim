@@ -11,10 +11,6 @@ import os
 
 from simulacra.theory import TheoryModel
 
-def sample_deltas(epoches,vel_width=30*u.km/u.s):
-    deltas  = np.array(shifts((2*random.rand(epoches)-1)*vel_width))
-    return deltas
-
 def read_in_fits(filename):
     print('reading in {}'.format(filename))
     grid = astropy.io.fits.open(filename)['PRIMARY'].data
@@ -73,11 +69,16 @@ def download_phoenix_model(star,outdir=None):
 
         return outname
 
-def zplusone(vel):
-    return np.sqrt((1 + vel/(const.c))/(1 - vel/(const.c)))
+def velocities(shifts):
+    expon = np.exp(2*shifts)
+    vel = const.c * (expon-1)/(1 + expon)
+    return vel
+
+def delta_x(R):
+    return np.log(1+1/R)
 
 def shifts(vel):
-    return np.log(zplusone(vel))
+    return np.log(np.sqrt((1 + vel/(const.c))/(1 - vel/(const.c))))
 
 def get_random_times(n,tframe=365*u.day):
     now = atime.Time.now()
@@ -194,11 +195,14 @@ class PhoenixModel(TheoryModel):
         return locals()
     wave_difference = property(**wave_difference())
 
-    def generate_spectra(self,detector,obs_times,exp_times):
+    def get_velocity(self,detector,obs_times):
+        rvs    = get_velocity_measurements(obs_times,self.amplitude,self.period,detector.loc,self.target)
+        return rvs
+
+
+    def get_spectra(self,detector,obs_times):
         # add integral over transmission
-        time = atime.Time([obs_times[i] + exp_times[i]/2 for i in range(len(obs_times))])
-        rvs    = get_velocity_measurements(time,self.amplitude,self.period,detector.loc,self.target)
-        deltas = shifts(rvs)
+        # time = atime.Time([obs_times[i] + exp_times[i]/2 for i in range(len(obs_times))])
 
         print('surface flux: mean {:3.2e}\t median {:3.2e}'.format(np.mean(self.surface_flux),np.median(self.surface_flux)))
         obs_flux = self.surface_flux * (self.stellar_radius**2/self.distance**2).to(1)
@@ -208,7 +212,7 @@ class PhoenixModel(TheoryModel):
         # plt.show()
         obs_flux = np.outer(np.ones(obs_times.shape),obs_flux)
         # obs_flux = stellar_to_detector_flux(self,detector,exp_times)
-        return obs_flux, self.wave, deltas, rvs
+        return obs_flux, self.wave
 
     def plot(self,ax,epoch_idx,normalize=None,nargs=[]):
         y = self.flux

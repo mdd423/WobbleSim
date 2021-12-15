@@ -245,7 +245,7 @@ class Detector:
 
         if snrs is not None:
             if wavelength_trigger is None:
-                wavelength_trigger = (w_hat[0] + w_hat[-1])/2
+                wavelength_trigger = (self.wave_grid[0] + self.wave_grid[-1])/2
 
             if not hasattr(snrs,'__iter__'):
                 snrs = snrs * np.ones(epoches)

@@ -155,8 +155,8 @@ class TelFitModel(TheoryModel):
                 'temperature: {}\n'.format(self.temperature[i].to(u.Kelvin).value),
                 'lat: {}\n'.format(self.loc.lat.to(u.degree).value),
                 'elevation: {}\n'.format(self.loc.height.to(u.km).value),
-                'freqmin(cm-1): {}\n'.format(1.0/(self.lambmax.to(u.cm).value)),
-                'freqmax(cm-1): {}\n'.format(1.0/(self.lambmin.to(u.cm).value)),
+                'freqmin(cm-1): {}\n'.format(1.0/(detector.lambmax.to(u.cm).value)),
+                'freqmax(cm-1): {}\n'.format(1.0/(detector.lambmin.to(u.cm).value)),
                 'angle: {}\n'.format(angle.to(u.deg).value))
 
             model = modeler.MakeModel(humidity=self.humidity[i],
@@ -164,8 +164,8 @@ class TelFitModel(TheoryModel):
                          temperature=float(self.temperature[i].to(u.Kelvin).value),
                          lat=float(self.loc.lat.to(u.degree).value),
                          alt=float(self.loc.height.to(u.km).value),
-                         lowfreq=float(1.0/detector.lambmax.to(u.cm).value),
-                         highfreq=float(1.0/detector.lambmin.to(u.cm).value),
+                         lowfreq=float(1.0/(detector.lambmax.to(u.cm).value - self.wave_padding.to(u.cm).value)),
+                         highfreq=float(1.0/(detector.lambmin.to(u.cm).value - self.wave_padding.to(u.cm).value)),
                          angle=float(angle.to(u.deg).value))
 
 

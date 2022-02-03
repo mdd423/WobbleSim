@@ -135,9 +135,13 @@ class TelFitModel(TheoryModel):
         return locals()
     epoches = property(**epoches())
 
-    def generate_transmission(self,star,detector,obs_times):
+    def airmass(self,star,detector,obs_times):
         telescope_frame = coord.AltAz(obstime=obs_times,location=detector.loc)
         secz = np.array(star.target.transform_to(telescope_frame).secz)
+        return airmass
+
+    def generate_transmission(self,star,detector,obs_times):
+        secz = self.airmass(star,detector,obs_times)
         # singlerun = self.epoches is None
         if self.epoches != obs_times.shape[0]:
             logging.warning('tellurics epoches not the same as obs times\nresetting...')

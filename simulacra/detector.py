@@ -345,12 +345,15 @@ class Detector:
         if t_exp is None:
             t_exp = np.zeros(snrs.shape) * u.min
             if hasattr(wavelength_trigger,'__iter__'):
+                inds_1 = np.where(w_hat < np.max(wavelength_trigger))
+                inds_2 = np.where(w_hat > np.min(wavelength_trigger))
+                inds = inds_1 and inds_2
                 for i,snr in enumerate(snrs):
-                    t_exp[i] = self.trigger(P_exp[i,:],snrs[i],w_hat[i,:])
+                    t_exp[i] = self.trigger(P_exp[i,inds],snrs[i],w_hat[i,inds])
             else:
                 wt_index = np.abs(w_hat - wavelength_trigger).argmin()
                 for i,snr in enumerate(snrs):
-                    t_exp[i] = self.trigger(P_exp[i,wt_index],snrs[i],w_hat[i,wt_index])
+                    t_exp[i] = self.trigger([P_exp[i,wt_index]],snrs[i],[w_hat[i,wt_index]])
         data['data']['t_exp'] = t_exp
 
         n_exp = np.empty(P_exp.shape)

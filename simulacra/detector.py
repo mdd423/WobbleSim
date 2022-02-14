@@ -13,6 +13,7 @@ import logging
 from simulacra.dataset import DetectorData
 import simulacra.lanczos
 import simulacra.convolve
+import simulacra.star
 
 
 from itertools import repeat
@@ -155,6 +156,9 @@ class Detector:
             else:
                 logging.error('resolution grid needs to be a single value \
                                 or a callable that takes wavelength as input')
+        def fget(self):
+            return self._resolution
+
         def fdel(self):
             logging.warn('overwriting resolution')
             del self._resolution
@@ -245,7 +249,8 @@ class Detector:
 
         if snrs is not None:
             if wavelength_trigger is None:
-                wavelength_trigger = (self.wave_grid[0] + self.wave_grid[-1])/2
+                wavelength_trigger = self.wave_grid
+                # wavelength_trigger = (self.wave_grid[0] + self.wave_grid[-1])/2
 
             if not hasattr(snrs,'__iter__'):
                 snrs = snrs * np.ones(epoches)
@@ -338,11 +343,14 @@ class Detector:
         print(P_exp.unit)
         w_hat = np.exp(x_hat) * u.Angstrom
         if t_exp is None:
-            wt_index = np.abs(w_hat - wavelength_trigger).argmin()
-
             t_exp = np.zeros(snrs.shape) * u.min
-            for i,snr in enumerate(snrs):
-                t_exp[i] = self.trigger(P_exp[i,wt_index],snrs[i],w_hat[i,wt_index])
+            if hasattr(wavelength_trigger,'__iter__'):
+                for i,snr in enumerate(snrs):
+                    t_exp[i] = self.trigger(P_exp[i,:],snrs[i],w_hat[i,:])
+            else:
+                wt_index = np.abs(w_hat - wavelength_trigger).argmin()
+                for i,snr in enumerate(snrs):
+                    t_exp[i] = self.trigger(P_exp[i,wt_index],snrs[i],w_hat[i,wt_index])
         data['data']['t_exp'] = t_exp
 
         n_exp = np.empty(P_exp.shape)
@@ -370,12 +378,15 @@ class Detector:
         for i in range(P_exp.shape[0]):
             for j in range(P_exp.shape[1]):
                 snr_readout[i,j] = self.signal_to_noise(t_exp[i],P_exp[i,j],w_hat[i,j],shots=n_readout[i,j])
+        print('t_exp: {}\nsnr: {}'.format(np.mean(t_exp),np.mean(snr_readout)))
 
         print('generating errors...')
         nerr_out = generate_errors_v(n_readout.flatten(),snr_readout.flatten()).reshape(out_shape)
 
         data['data']['snr_readout'] = snr_readout
         data['data']['ferr']        = nerr_out
+
+        # mask_2 = np.where(np.isnan(nerr_out))
 
         # Pack Parameters into Dictionary
         ###################################################
@@ -468,6 +479,8 @@ class Detector:
         return np.repeat(x[np.newaxis,:],repeats=epoches,axis=0), None
 
     def trigger(self,P,snr,wavelength):
+        # find the root of the signal to noise ratio func and the target snr
+        # to find the exposure time
         def func(*args):
             out = self.signal_to_noise(args[0] * u.min, *args[1:])
             return out - snr

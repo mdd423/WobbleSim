@@ -485,16 +485,29 @@ class Detector:
     def trigger(self,P,snr,wavelength):
         # find the root of the signal to noise ratio func and the target snr
         # to find the exposure time
-        def func(*args):
-            out = self.signal_to_noise(args[0] * u.min, *args[1:])
-            return out - snr
-        res = scipy.optimize.root(func, 1.0, args=(P, wavelength))
-        print(res.x.shape)
+#         print(P,wavelength)
+        min_space = np.linspace(-1.0,1.0) * u.min
+
+        def func(t,powers,waves):
+            out = []
+            for i,w in enumerate(waves):
+                out.append(self.signal_to_noise(complex(t,0) * u.min, powers[i], waves[i]))
+#             out = self.signal_to_noise(complex(args[0],0) * u.min, *args[1:])
+            return np.abs(np.mean(out) - snr)**2
+
+        res = scipy.optimize.minimize(func, 1.0, args=(P, wavelength))
+#         y_vec = [func(x,P,wavelength) for x in min_space]
+#         plt.plot(min_space,y_vec)
+#         plt.vlines(res.x[0],0,np.max(y_vec))
+#         plt.show()
+        print(res.x[0] * u.min)
         return res.x[0] * u.min
 
     def signal_to_noise(self,t_exp,P,wavelength,shots=None):
+#         print('1-shots',shots)
         if shots is None:
-            shots = self.shots(t_exp,P,wavelength)
+            shots = complex(self.shots(t_exp,P,wavelength),0)
+#         print('2-shots', shots)
         snr =  shots \
         / (np.sqrt(shots + self.noise_source(t_exp,P,wavelength)))
         return snr

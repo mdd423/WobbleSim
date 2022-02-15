@@ -39,7 +39,11 @@ def download_phoenix_wave(outdir):
         return outname
 
 def download_phoenix_model(star,outdir=None):
-    directories = ['HiResFITS','PHOENIX-ACES-AGSS-COND-2011','Z{:+.1f}'.format(star.z)]
+    if star.z >= -0.1 and star.z <= 0.1:
+        z_directory = 'Z-{:.1f}'.format(star.z)
+    else:
+        z_directory = 'Z{:+.1f}'.format(star.z)
+    directories = ['HiResFITS','PHOENIX-ACES-AGSS-COND-2011',z_directory]
     # print(directories)
     if star.alpha != 0.0:
         directories[-1] += '.Alpha={:+.2f}'.format(star.alpha)
@@ -78,7 +82,7 @@ def delta_x(R):
     return np.log(1+1/R)
 
 def shifts(vel):
-    return np.log(np.sqrt((1 + vel/(const.c))/(1 - vel/(const.c))))
+    return (1/2) * np.log((1 + vel/(const.c))/(1 - vel/(const.c)))
 
 def get_random_times(n,tframe=365*u.day):
     now = atime.Time.now()
@@ -170,7 +174,7 @@ class PhoenixModel(TheoryModel):
             self.outdir = os.path.join('..','data','stellar','PHOENIX')
             os.makedirs(self.outdir,exist_ok=True)
         self.temperature = temperature
-        self.z = z
+        self.z     = z
         self.logg  = logg
         self.alpha = alpha
         self.wavename = download_phoenix_wave(self.outdir)
@@ -182,8 +186,8 @@ class PhoenixModel(TheoryModel):
         self.wave     = read_in_fits(self.wavename) * u.Angstrom
 
         # make these attributes of the phoenix model
-        self.distance = coord.Distance(distance)
-        self.target = target
+        self.distance  = coord.Distance(distance)
+        self.target    = target
         self.amplitude = amplitude
         self.period    = period
 
@@ -198,7 +202,6 @@ class PhoenixModel(TheoryModel):
     def get_velocity(self,detector,obs_times):
         rvs    = get_velocity_measurements(obs_times,self.amplitude,self.period,detector.loc,self.target)
         return rvs
-
 
     def get_spectra(self,detector,obs_times):
         # add integral over transmission

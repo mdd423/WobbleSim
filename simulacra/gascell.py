@@ -17,7 +17,7 @@ class GasCellModel(TheoryModel):
         self.flux = transmission
         self.wave = wavelength * u.Angstrom
 
-    def generate_transmission(self,star,detector,obs_times,exp_times):
+    def generate_transmission(self,star,detector,obs_times):
         flux = [self.flux for i in range(len(obs_times))]
         wave = [self.wave for i in range(len(obs_times))]
         return flux, wave

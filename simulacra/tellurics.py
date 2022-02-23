@@ -168,7 +168,7 @@ class TelFitModel(TheoryModel):
                          temperature=float(self.temperature[i].to(u.Kelvin).value),
                          lat=float(self.loc.lat.to(u.degree).value),
                          alt=float(self.loc.height.to(u.km).value),
-                         lowfreq=float(1.0/(detector.lambmax.to(u.cm).value - self.wave_padding.to(u.cm).value)),
+                         lowfreq=float(1.0/(detector.lambmax.to(u.cm).value + self.wave_padding.to(u.cm).value)),
                          highfreq=float(1.0/(detector.lambmin.to(u.cm).value - self.wave_padding.to(u.cm).value)),
                          angle=float(angle.to(u.deg).value))
 

@@ -63,7 +63,7 @@ def save_dict_as_h5(hf,data):
             if data[key].dtype == at.Time:
                 print('saving time')
                 dt = h5py.special_dtype(vlen=str)
-                times = np.array([x.to_value('iso', subfmt='date_hms').strftime('%Y-%m-%dT%H:%M:%S.%f%z') for x in data[key]],dtype=dt)
+                times = np.array([x.to_value('iso', subfmt='date_hms') for x in data[key]],dtype=dt)
                 hf.create_dataset(key,data=times)
             else:
                 hf.create_dataset(key,data=data[key])

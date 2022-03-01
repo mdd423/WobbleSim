@@ -52,6 +52,12 @@ def convert_xy(x,y,yerr=None,units=u.Angstrom):
 def save_dict_as_h5(hf,data):
     import h5py
     for key in data.keys():
+        def save_time():
+            print('saving time')
+            dt = h5py.special_dtype(vlen=str)
+            times = np.array([x.to_value('isot', subfmt='date_hms') for x in data[key]],dtype=dt)
+            hf.create_dataset(key,data=times)
+
         if isinstance(data[key],u.Quantity):
             print('quantity')
             group = hf.create_group(key)
@@ -59,12 +65,12 @@ def save_dict_as_h5(hf,data):
             dt = h5py.special_dtype(vlen=str)
             unt = np.array([str(data[key].unit)],dtype=dt)
             group.create_dataset('unit',data=unt)
+        elif isinstance(data[key], at.Time):
+            save_time()
+
         elif isinstance(data[key], np.ndarray):
             if data[key].dtype == at.Time:
-                print('saving time')
-                dt = h5py.special_dtype(vlen=str)
-                times = np.array([x.to_value('isot', subfmt='date_hms') for x in data[key]],dtype=dt)
-                hf.create_dataset(key,data=times)
+                save_time()
             else:
                 hf.create_dataset(key,data=data[key])
         # except AttributeError:

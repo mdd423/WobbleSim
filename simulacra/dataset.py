@@ -86,7 +86,7 @@ def save_dict_as_h5(hf,data):
 
             dt = h5py.special_dtype(vlen=str)
             arr = np.array([str(x) for x in data[key]],dtype=dt)
-            hf.create_dataset(key,data=test)
+            hf.create_dataset(key,data=arr)
 
 def from_pickle(filename):
     import pickle

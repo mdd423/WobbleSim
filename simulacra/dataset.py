@@ -82,8 +82,11 @@ def save_dict_as_h5(hf,data):
         else:
             print(key, ' saving as string')
             dt = h5py.special_dtype(vlen=str)
-            arr = np.array([str(data[key])],dtype=dt)
-            hf.create_dataset(key,data=arr)
+            test_times = np.array([x.to_value('isot', subfmt='date_hms') for x in time],dtype=dt)
+
+            # dt = h5py.special_dtype(vlen=str)
+            # arr = np.array([str(x) for x in data[key]],dtype=dt)
+            hf.create_dataset(key,data=test_times)
 
 def from_pickle(filename):
     import pickle

@@ -27,6 +27,7 @@ class TelFitModel(TheoryModel):
         # self.wave = np.arange(lambmin.to(u.Angstrom).value,lambmax.to(u.Angstrom).value,step=dlamb.to(u.Angstrom).value) * u.Angstrom
 
         self.loc = loc
+        self.over_resolution = 1_000_000
 
     def check_shape_type(self,value,unit=None):
         if isinstance(value, u.Quantity):
@@ -171,7 +172,7 @@ class TelFitModel(TheoryModel):
                          lowfreq=float(1.0/(detector.lambmax.to(u.cm).value + self.wave_padding.to(u.cm).value)),
                          highfreq=float(1.0/(detector.lambmin.to(u.cm).value - self.wave_padding.to(u.cm).value)),
                          angle=float(angle.to(u.deg).value),
-                         resolution=300_000)
+                         resolution=self.over_resolution)
 
 
             ns   = len(model.x)

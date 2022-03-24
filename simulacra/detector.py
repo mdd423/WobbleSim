@@ -263,6 +263,28 @@ class Detector:
         return min(maximums)
 
     def simulate(self,obs_times,t_exp=None,snrs=None,wavelength_trigger=None,*args,**kwargs):
+        '''
+            The working function of the detector that creates the simulated data with the given
+            parameters previously set.
+            Parameters:
+            obs_times (np.ndarray) [astropy.time.Time] midtime of exposure,
+                used to determine star velocity for redshift
+            EITHER
+            t_exp (np.ndarray) [astropy.time.Time] length of time of exposure,
+                to determine the number of photons, and signal to noise ratios
+            OR
+            {
+            snrs (np.ndarray) [float] target snr of each epoch, the root of signal to noise function
+                is found with respect to time (self.trigger)
+            AND
+            wavelength_trigger: either a single wavelength or wavelength range to take
+                average over when finding length of exposure time
+            }
+        '''
+
+        if len(self.wave_grid) != 0:
+            print('wave_grid is empty')
+            sys.exit()
         data = DetectorData()
         data['data'] = {}
         data['data']['obs_times'] = obs_times
@@ -396,6 +418,9 @@ class Detector:
         data['parameters']['true_snr'] = snr_grid
         data['data']['flux_expected'] = n_exp
         data['data']['flux'] = n_readout
+
+        data['data']['mask'] += (n_readout <= 0.0)
+        data['data']['mask'] = data['data']['mask'].astype()
         data['data']['wave'] = self.wave_grid
 
         # Get Error Bars
@@ -430,6 +455,14 @@ class Detector:
         return data
 
     def convolve(self,xs,fs,dx):
+        '''
+            The convolving function that convolves the total flux with the line
+            spread function, called at .simulate
+            Parameters:
+            xs: np.ndarray (m) log wavelength array
+            fs: np.ndarray (n,m) flux array
+            dx: float linear spacing of log wavelength
+        '''
         self.lsf_coeffs = np.outer(np.ones((fs.shape[1],len(self.lsf_const_coeffs))), self.lsf_const_coeffs)
         class ConvolveIter:
             def __init__(obj,fs):
@@ -476,6 +509,10 @@ class Detector:
         return fs
 
     def interpolate_data(self,xs,x,f):
+        '''
+            Interpolation function that interpolates observing wavelengths onto
+            the theoretical flux. Here I use Lanczos interpolation. Defined in lanczos.py.
+        '''
         dx = average_difference(x)
         class LanczosIter:
             def __init__(obj):
@@ -502,47 +539,54 @@ class Detector:
         return f_exp
 
     def wave_transform(self,x,epoches,*arg):
-
+        '''
+            Wave transformation in detector. Called in .simulate
+        '''
         return np.repeat(x[np.newaxis,:],repeats=epoches,axis=0), None
 
     def trigger(self,P,snr,wavelength):
-        # find the root of the signal to noise ratio func and the target snr
-        # to find the exposure time
-#         print(P,wavelength)
-        min_space = np.linspace(-1.0,1.0) * u.min
-
+        '''
+            Triggers the detector to stop exposure at a given SNR limit. Only called
+            in .simulate if snrs are given not t_exp
+        '''
         def func(t,powers,waves):
             out = []
             for i,w in enumerate(waves):
-                out.append(self.signal_to_noise(complex(t,0) * u.min, powers[i], waves[i]))
-#             out = self.signal_to_noise(complex(args[0],0) * u.min, *args[1:])
+                out.append(self.signal_to_noise(complex(t,0) * u.min, powers[i], waves[i]))#             out = self.signal_to_noise(complex(args[0],0) * u.min, *args[1:])
             return np.abs(np.mean(out) - snr)**2
 
         res = scipy.optimize.minimize(func, 1.0, args=(P, wavelength))
-#         y_vec = [func(x,P,wavelength) for x in min_space]
-#         plt.plot(min_space,y_vec)
-#         plt.vlines(res.x[0],0,np.max(y_vec))
-#         plt.show()
-        print(res.x[0] * u.min)
+
         return res.x[0] * u.min
 
     def signal_to_noise(self,t_exp,P,wavelength,shots=None):
-#         print('1-shots',shots)
+        '''
+            Calculate signal to noise ratio.
+        '''
         if shots is None:
             shots = complex(self.shots(t_exp,P,wavelength),0)
-#         print('2-shots', shots)
         snr =  shots \
         / (np.sqrt(shots + self.noise_source(t_exp,P,wavelength)))
         return snr
 
     def shots(self,t_exp,P,wavelength):
+        '''
+            Convert photons per minute to total photons
+        '''
         return t_exp * P
 
     def noise_source(self,t_exp,P,wavelength):
+        '''
+            Noise sources of detector
+        '''
         return 0.0
 
     def energy_to_photon_pow(self,flux,*args):
-        P = self.through_put * (self.area/(const.hbar * const.c)*np.einsum('ij,j,j->ij', flux, self.wave_difference, self.wave_grid)).to(1/u.min)
+        '''
+            convert energy incoming to detector to photons per minute
+        '''
+        P = self.through_put * (self.area/(const.hbar * const.c) * \
+            np.einsum('ij,j,j->ij', flux, self.wave_difference, self.wave_grid)).to(1/u.min)
         return P
 
 

@@ -1,5 +1,8 @@
 import numpy as np
 import astropy.units as u
+from functools import partial
+import jax
+import jax.numpy as np
 
 # def lanczos_interpolation(x,xs,ys,dx,a=4):
 #     x0 = xs[0]
@@ -15,6 +18,7 @@ import astropy.units as u
 #             y[i] += ys[sample] * lanczos_kernel((x_value - xs[sample])/dx,a)
 #     return y
 
+@partial(jax.vectorize,excluded=(1,))
 def lanczos_kernel(x,a):
     if x == 0:
         return 1

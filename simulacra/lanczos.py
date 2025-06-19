@@ -24,7 +24,7 @@ def lanczos_kernel(x,a):
 
 import jax.numpy as jnp
 def lanczos_matrix(x,xs,dx,a=4):
-    return jnp.where(((x[None,:] - xs[:,None])/dx < a)*((x[None,:] - xs[:,None])/dx > -a),(lanczos_kernel(x[None,:] - xs[:,None])/dx),0.0)
+    return jnp.where(((x[None,:] - xs[:,None])/dx < a)*((x[None,:] - xs[:,None])/dx > -a),(lanczos_kernel((x[None,:] - xs[:,None])/dx,a)),0.0)
 
 def lanczos_interpolation(x,xs,ys,dx,a=4):
     M = lanczos_matrix(xs,xs,dx,a)

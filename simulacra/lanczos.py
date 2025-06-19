@@ -2,7 +2,7 @@ import numpy as np
 import astropy.units as u
 from functools import partial
 import jax
-import jax.numpy as np
+import jax.numpy as jnp
 
 # def lanczos_interpolation(x,xs,ys,dx,a=4):
 #     x0 = xs[0]
@@ -18,7 +18,7 @@ import jax.numpy as np
 #             y[i] += ys[sample] * lanczos_kernel((x_value - xs[sample])/dx,a)
 #     return y
 
-@partial(jax.vectorize,excluded=(1,))
+@partial(jnp.vectorize,excluded=(1,))
 def lanczos_kernel(x,a):
     if x == 0:
         return 1
@@ -26,7 +26,6 @@ def lanczos_kernel(x,a):
         return a*np.sin(np.pi*x) * np.sin(np.pi*x/a)/(np.pi**2 * x**2)
     return 0
 
-import jax.numpy as jnp
 def lanczos_matrix(x,xs,dx,a=4):
     booleans = ((x[None,:] - xs[:,None])/dx < a)*((x[None,:] - xs[:,None])/dx > -a)
     print(booleans.shape)

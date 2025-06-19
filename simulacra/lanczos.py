@@ -33,5 +33,5 @@ def lanczos_interpolation(x,xs,ys,dx,a=4):
     print("created matrix")
     theta = jnp.linalg.solve(M, ys)
     print("solved matrix")
-    return theta @ lanczos_matrix(xs, x, dx, a)
+    return theta @ lanczos_matrix(x, xs, dx, a)
 

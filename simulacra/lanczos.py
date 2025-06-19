@@ -29,9 +29,10 @@ def lanczos_matrix(x,xs,dx,a=4):
                      lanczos_kernel((x[None,:] - xs[:,None])/dx,a),0.0)
 
 def lanczos_interpolation(x,xs,ys,dx,a=4):
+    print('creating lanczos matrix')
     M = lanczos_matrix(xs,xs,dx,a)
-    print("created matrix")
+    print('solving lanczos matrix')
     theta = jnp.linalg.solve(M, ys)
-    print("solved matrix")
+    print('interpolating lanczos')
     return theta @ lanczos_matrix(x, xs, dx, a)
 

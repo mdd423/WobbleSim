@@ -319,11 +319,11 @@ class Detector:
         trans_flux, trans_wave = [], []
         for model in self.transmission_models:
             # data['theory']['interpolated'][model._name] = {}
-            data['theory'][model._name] = {}
+            
             flux, wave = model.generate_transmission(self.stellar_model,self,obs_times)
             trans_flux.append(flux), trans_wave.append(wave)
             differences += [get_median_difference(np.log(wave[iii][:].to(u.Angstrom).value)) for iii in range(len(wave))]
-            data['theory'][model._name]['flux'],data['theory'][model._name]['wave'] = flux, wave
+            # data['theory'][model._name]['flux'],data['theory'][model._name]['wave'] = flux, wave
             print(model, differences)
         new_step_size = min(differences)
 
@@ -347,6 +347,7 @@ class Detector:
         mask_the  = np.zeros(fs.shape,dtype=bool)
         data['theory']['total'] = {}
         for j,model in enumerate(self.transmission_models):
+            data['theory'][model._name] = {}
             # print("fs: ", fs.shape)
             fs *= trans_arrs[j,:,:]
             mask_the = (trans_arrs[j,:,:] > self.transmission_cutoff) | mask_the

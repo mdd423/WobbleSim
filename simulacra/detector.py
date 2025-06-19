@@ -24,6 +24,7 @@ import simulacra.star
 from itertools import repeat
 from multiprocessing import Pool
 
+PRNG_KEY = 1010101
 
 def dict_of_attr(data,obj):
     obj_list = [a for a in dir(obj) if not a.startswith('__')]
@@ -37,7 +38,6 @@ def dict_of_attr(data,obj):
 def get_median_difference(x):
 
     return np.median([t - s for s, t in zip(x, x[1:])])
-
 
 
 def average_difference(x):

@@ -19,7 +19,7 @@ def lanczos_kernel(x,a):
     if x == 0:
         return 1
     if x > -a and x < a:
-        return a*np.sin(np.pi*u.radian*x) * np.sin(np.pi*u.radian*x/a)/(np.pi**2 * x**2)
+        return a*np.sin(np.pi*x) * np.sin(np.pi*x/a)/(np.pi**2 * x**2)
     return 0
 
 import jax.numpy as jnp
@@ -28,6 +28,8 @@ def lanczos_matrix(x,xs,dx,a=4):
 
 def lanczos_interpolation(x,xs,ys,dx,a=4):
     M = lanczos_matrix(xs,xs,dx,a)
+    print("created matrix")
     theta = jnp.linalg.solve(M, ys)
+    print("solved matrix")
     return theta @ lanczos_matrix(xs, x, dx, a)
 

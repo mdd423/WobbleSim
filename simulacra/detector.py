@@ -534,7 +534,7 @@ class Detector:
         # with Pool() as pool:
         #     obj = LanczosIter()
         #     M = pool.starmap(simulacra.lanczos.lanczos_interpolation, obj)
-        f_exp = jax.vmap(simulacra.lanczos.lanczos_interpolation, in_axes=(0,0,0,None,None))(xs,x,f,dx,self.a)
+        f_exp = jax.vmap(simulacra.lanczos.lanczos_interpolation, in_axes=(0,None,0,None,None))(xs,x,f,dx,self.a)
         return f_exp
 
     def wave_transform(self,x,epoches,*arg):

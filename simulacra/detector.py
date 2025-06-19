@@ -52,21 +52,18 @@ def generate_errors(f,snr):
     return f_err
 
 # from numba import vectorize, float64
-@jnp.vectorize
-def add_noise_v(f, snr):
-    return f + random.normal(0.0,f/snr)
 
-@jnp.vectorize
-def generate_errors_v(f, snr):
-    return f / snr
+# @jnp.vectorize
+# def generate_errors_v(f, snr):
+#     return f / snr
 
-def add_noise(f_exp,snr_grid):
-    f_readout = np.empty(f_exp.shape)
-    for i in range(f_exp.shape[0]):
-        print('snr {}: {}'.format(i,np.median(snr_grid[i,:])))
-        for j in range(f_exp.shape[1]):
-            f_readout[i,j] = f_exp[i,j] + random.normal(0.0,f_exp[i,j]/snr_grid[i,j])
-    return f_readout
+# def add_noise(f_exp,snr_grid):
+#     f_readout = np.empty(f_exp.shape)
+#     for i in range(f_exp.shape[0]):
+#         print('snr {}: {}'.format(i,np.median(snr_grid[i,:])))
+#         for j in range(f_exp.shape[1]):
+#             f_readout[i,j] = f_exp[i,j] + random.normal(0.0,f_exp[i,j]/snr_grid[i,j])
+#     return f_readout
 
 def interpolate_mask(xs,mask_the,x_hat):
     return np.array([interp.interp1d(xs,mask_the[i,:].astype(float),kind='nearest')(x_hat[i,:]) for i in range(x_hat.shape[0])]).astype(bool)
@@ -242,6 +239,17 @@ class Detector:
         # print(maximums)
         return min(maximums)
 
+    @jnp.vectorize
+    def add_noise(f, snr):
+        '''
+            Add noise to the flux based on the signal to noise ratio. Vectorized by JAX.
+            Parameters:
+            f (np.ndarray) [float] flux array
+            snr (np.ndarray) [float] signal to noise ratio
+        '''
+
+        return f + jnp.random.normal()*f/snr
+
     def simulate(self,obs_times,t_exp=None,snrs=None,wavelength_trigger=None,*args,**kwargs):
         '''
             The working function of the detector that creates the simulated data with the given
@@ -393,7 +401,7 @@ class Detector:
         # snr_grid = self.signal_to_noise(t_exp,P_exp)
         print('adding noise...')
         out_shape = snr_grid.shape
-        n_readout = add_noise_v(n_exp.flatten(),snr_grid.flatten()).reshape(out_shape)
+        n_readout = self.add_noise(n_exp.flatten(),snr_grid.flatten()).reshape(out_shape)
 
         data['parameters']['true_snr'] = snr_grid
         data['data']['flux_expected'] = n_exp

@@ -20,16 +20,12 @@ import jax.numpy as jnp
 
 @partial(jnp.vectorize,excluded=(1,))
 def lanczos_kernel(x,a):
-    if x == 0:
-        return 1
-    if x > -a and x < a:
-        return a*np.sin(np.pi*x) * np.sin(np.pi*x/a)/(np.pi**2 * x**2)
-    return 0
+    return jnp.where(x == 0, 1, \
+                     jnp.where((x > -a) & (x < a), \
+                               a * jnp.sin(jnp.pi * x) * jnp.sin(jnp.pi * x / a) / (jnp.pi**2 * x**2), 0.0))
 
 def lanczos_matrix(x,xs,dx,a=4):
-    booleans = ((x[None,:] - xs[:,None])/dx < a)*((x[None,:] - xs[:,None])/dx > -a)
-    print(booleans.shape)
-    return jnp.where(booleans,\
+    return jnp.where(((x[None,:] - xs[:,None])/dx < a)*((x[None,:] - xs[:,None])/dx > -a),\
                      lanczos_kernel((x[None,:] - xs[:,None])/dx,a),0.0)
 
 def lanczos_interpolation(x,xs,ys,dx,a=4):

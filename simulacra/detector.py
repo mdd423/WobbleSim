@@ -10,6 +10,7 @@ import scipy.interpolate as interp
 import scipy.ndimage as img
 import scipy.sparse
 import jax.numpy as jnp
+import jax.random
 from functools import partial
 
 import logging
@@ -249,7 +250,7 @@ class Detector:
             snr (np.ndarray) [float] signal to noise ratio
         '''
 
-        return f + jnp.random.normal()*f/snr
+        return f + jax.random.normal()*f/snr
 
     def simulate(self,obs_times,t_exp=None,snrs=None,wavelength_trigger=None,*args,**kwargs):
         '''

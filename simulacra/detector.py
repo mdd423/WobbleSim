@@ -310,16 +310,15 @@ class Detector:
         flux_stellar, wave_stellar = self.stellar_model.get_spectra(self,obs_times)
 
         data['data']['rvs'], data['theory']['star']['deltas'] = rvs, deltas
-        data['theory']['star']['flux'], data['theory']['star']['wave'] = flux_stellar, wave_stellar
+        # data['theory']['star']['flux'], data['theory']['star']['wave'] = flux_stellar, wave_stellar
         differences = [get_median_difference(np.log(wave_stellar.to(u.Angstrom).value))]
 
         # Generate Transmission
         ###################################################
         print('generating spectra...')
         trans_flux, trans_wave = [], []
-        data['theory']['interpolated'] = {}
         for model in self.transmission_models:
-            data['theory']['interpolated'][model._name] = {}
+            # data['theory']['interpolated'][model._name] = {}
             data['theory'][model._name] = {}
             flux, wave = model.generate_transmission(self.stellar_model,self,obs_times)
             trans_flux.append(flux), trans_wave.append(wave)
@@ -331,7 +330,7 @@ class Detector:
         # Interpolate all models and combine onto detector
         # PARALLELIZE
         ##################################################################
-        data['theory']['interpolated']['star'] = {}
+        # data['theory']['interpolated']['star'] = {}
         xs = np.arange(np.log(self.lambmin.to(u.Angstrom).value),np.log(self.lambmax.to(u.Angstrom).value),step=new_step_size)
         print('interpolating spline...')
         stellar_arr = np.empty((epoches,xs.shape[0]))
@@ -342,19 +341,20 @@ class Detector:
             trans_arrs[j,:,:] = self.interpolate_grid(np.outer(np.ones(epoches),xs),[np.log(x.to(u.Angstrom).value) for x in trans_wave[j][:]],trans_flux[j])
 
         print('combining grids...')
-        data['theory']['interpolated']['star']['flux'] = stellar_arr
+        data['theory']['star']['flux'] = stellar_arr
         fs        = stellar_arr.copy()
         flux_unit = flux_stellar.unit
         mask_the  = np.zeros(fs.shape,dtype=bool)
+        data['theory']['total'] = {}
         for j,model in enumerate(self.transmission_models):
             # print("fs: ", fs.shape)
             fs *= trans_arrs[j,:,:]
             mask_the = (trans_arrs[j,:,:] > self.transmission_cutoff) | mask_the
-            data['theory']['interpolated'][model._name]['flux'] = trans_arrs[j,:,:]
-        data['theory']['interpolated']['total'] = {}
-        data['theory']['interpolated']['total']['flux'] = fs
-        data['theory']['interpolated']['total']['wave'] = np.exp(xs) * u.Angstrom
-        data['theory']['interpolated']['total']['mask'] = mask_the
+            data['theory'][model._name]['flux'] = trans_arrs[j,:,:]
+        data['theory']['total'] = {}
+        data['theory']['total']['flux'] = fs
+        data['theory']['total']['wave'] = np.exp(xs) * u.Angstrom
+        data['theory']['total']['mask'] = mask_the
 
         # Convolving using Hermite Coeffs
         #################################################

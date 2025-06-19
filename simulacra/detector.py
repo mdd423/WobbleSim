@@ -7,6 +7,7 @@ import astropy.coordinates as coord
 import scipy.interpolate as interp
 import scipy.ndimage as img
 import scipy.sparse
+import jax.numpy as jnp
 import numpy.random as random
 import logging
 
@@ -71,12 +72,12 @@ def generate_errors(f,snr):
             f_err[i,j] = f[i,j]/snr[i,j]
     return f_err
 
-from numba import vectorize, float64
-@vectorize([float64(float64, float64)])
+# from numba import vectorize, float64
+@jnp.vectorize
 def add_noise_v(f, snr):
     return f + random.normal(0.0,f/snr)
 
-@vectorize([float64(float64, float64)])
+@jnp.vectorize
 def generate_errors_v(f, snr):
     return f / snr
 

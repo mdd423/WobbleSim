@@ -4,6 +4,8 @@ import astropy.constants as const
 import astropy.time as at
 import astropy.coordinates as coord
 
+import sys
+
 import scipy.interpolate as interp
 import scipy.ndimage as img
 import scipy.sparse
@@ -115,7 +117,7 @@ class Detector:
         self.stellar_model = stellar_model
         self.transmission_models = []
 
-        # Randomized Parameters
+        # Lanczos Parameters
         self.a       = a
 
         # Simulation Parameters
@@ -260,7 +262,7 @@ class Detector:
             }
         '''
 
-        if len(self.wave_grid) != 0:
+        if len(self.wave_grid) == 0:
             print('wave_grid is empty')
             sys.exit()
         data = DetectorData()

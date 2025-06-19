@@ -507,34 +507,34 @@ class Detector:
             fs[i,:] = interp.CubicSpline(x[i],f[i])(xs[i,:])
         return fs
 
-    def interpolate_data(self,xs,x,f):
+    def interpolate_data(self,xs,x,f,dx):
         '''
             Interpolation function that interpolates observing wavelengths onto
             the theoretical flux. Here I use Lanczos interpolation. Defined in lanczos.py.
         '''
-        dx = average_difference(x)
-        class LanczosIter:
-            def __init__(obj):
+        # dx = average_difference(x)
+        # class LanczosIter:
+        #     def __init__(obj):
 
-                obj._i =  0
+        #         obj._i =  0
 
-            def __iter__(obj):
-                # output = (fs[obj._i,:], self.lsf_coeffs,self.lsf_centering,self.sigma,self.sigma_range,new_step_size)
-                obj._i = 0
-                return obj
+        #     def __iter__(obj):
+        #         # output = (fs[obj._i,:], self.lsf_coeffs,self.lsf_centering,self.sigma,self.sigma_range,new_step_size)
+        #         obj._i = 0
+        #         return obj
 
-            def __next__(obj):
-                if obj._i == f.shape[0]:
-                    raise StopIteration
-                print(obj._i)
-                output = (xs[obj._i,:],x,f[obj._i,:],dx,self.a)
-                obj._i += 1
-                return output
+        #     def __next__(obj):
+        #         if obj._i == f.shape[0]:
+        #             raise StopIteration
+        #         print(obj._i)
+        #         output = (xs[obj._i,:],x,f[obj._i,:],dx,self.a)
+        #         obj._i += 1
+        #         return output
 
-        with Pool() as pool:
-            obj = LanczosIter()
-            M = pool.starmap(simulacra.lanczos.lanczos_interpolation, obj)
-        f_exp = np.asarray(M)
+        # with Pool() as pool:
+        #     obj = LanczosIter()
+        #     M = pool.starmap(simulacra.lanczos.lanczos_interpolation, obj)
+        f_exp = jax.vmap(simulacra.lanczos.lanczos_interpolation, in_axes=(0,0,0,None,None))(xs,x,f,dx,self.a)
         return f_exp
 
     def wave_transform(self,x,epoches,*arg):

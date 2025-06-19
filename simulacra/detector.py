@@ -43,15 +43,15 @@ def get_median_difference(x):
 def average_difference(x):
     return np.mean([t - s for s, t in zip(x, x[1:])])
 
-def generate_errors(f,snr):
-    xs,ys = np.where(f < 0)
-    for x,y in zip(xs,ys):
-        f[x,y] = 0
-    f_err = np.empty(f.shape)
-    for i in range(f_err.shape[0]):
-        for j in range(f_err.shape[1]):
-            f_err[i,j] = f[i,j]/snr[i,j]
-    return f_err
+# def generate_errors(f,snr):
+#     xs,ys = np.where(f < 0)
+#     for x,y in zip(xs,ys):
+#         f[x,y] = 0
+#     f_err = np.empty(f.shape)
+#     for i in range(f_err.shape[0]):
+#         for j in range(f_err.shape[1]):
+#             f_err[i,j] = f[i,j]/snr[i,j]
+#     return f_err
 
 # from numba import vectorize, float64
 
@@ -241,7 +241,6 @@ class Detector:
         # print(maximums)
         return min(maximums)
 
-    # @partial(jnp.vectorize,excluded=(0,))
     def add_noise(self, f, snr):
         '''
             Add noise to the flux based on the signal to noise ratio. Vectorized by JAX.
@@ -251,6 +250,16 @@ class Detector:
         '''
 
         return f + jax.random.normal(PRNG_KEY,shape=f.shape,dtype=f.dtype)*f/snr
+    
+    def generate_errors(self,f,snr):
+        '''
+            Generate errors based on the flux and signal to noise ratio.
+            Parameters:
+            f (np.ndarray) [float] flux array
+            snr (np.ndarray) [float] signal to noise ratio
+        '''
+        
+        return f / snr
 
     def simulate(self,obs_times,t_exp=None,snrs=None,wavelength_trigger=None,*args,**kwargs):
         '''
@@ -410,7 +419,7 @@ class Detector:
         data['data']['flux'] = n_readout
 
         data['data']['mask'] += (n_readout <= 0.0)
-        data['data']['mask'] = data['data']['mask'].astype()
+        data['data']['mask'] = data['data']['mask'].astype(bool)
         data['data']['wave'] = self.wave_grid
 
         # Get Error Bars

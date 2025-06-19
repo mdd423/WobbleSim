@@ -10,7 +10,8 @@ import scipy.interpolate as interp
 import scipy.ndimage as img
 import scipy.sparse
 import jax.numpy as jnp
-import numpy.random as random
+from functools import partial
+
 import logging
 
 from simulacra.dataset import DetectorData
@@ -239,8 +240,8 @@ class Detector:
         # print(maximums)
         return min(maximums)
 
-    @jnp.vectorize
-    def add_noise(f, snr):
+    @partial(jnp.vectorize,argnums=(1,2))
+    def add_noise(self,f, snr):
         '''
             Add noise to the flux based on the signal to noise ratio. Vectorized by JAX.
             Parameters:

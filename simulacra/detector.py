@@ -432,7 +432,7 @@ class Detector:
         print('t_exp: {}\nsnr: {}'.format(np.mean(t_exp),np.mean(snr_readout)))
 
         print('generating errors...')
-        nerr_out = generate_errors_v(n_readout.flatten(),snr_readout.flatten()).reshape(out_shape)
+        nerr_out = self.generate_errors(n_readout.flatten(),snr_readout.flatten()).reshape(out_shape)
 
         data['data']['snr_readout'] = snr_readout
         data['data']['ferr']        = nerr_out

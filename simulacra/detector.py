@@ -24,7 +24,7 @@ import simulacra.star
 from itertools import repeat
 from multiprocessing import Pool
 
-PRNG_KEY = 1010101
+PRNG_KEY = jax.random.PRNGKey(1010101)
 
 def dict_of_attr(data,obj):
     obj_list = [a for a in dir(obj) if not a.startswith('__')]
@@ -241,8 +241,8 @@ class Detector:
         # print(maximums)
         return min(maximums)
 
-    @partial(jnp.vectorize,excluded=(0,))
-    def add_noise(self,f, snr):
+    # @partial(jnp.vectorize,excluded=(0,))
+    def add_noise(self, f, snr):
         '''
             Add noise to the flux based on the signal to noise ratio. Vectorized by JAX.
             Parameters:
@@ -250,7 +250,7 @@ class Detector:
             snr (np.ndarray) [float] signal to noise ratio
         '''
 
-        return f + jax.random.normal(PRNG_KEY)*f/snr
+        return f + jax.random.normal(PRNG_KEY,shape=f.shape,dtype=f.dtype)*f/snr
 
     def simulate(self,obs_times,t_exp=None,snrs=None,wavelength_trigger=None,*args,**kwargs):
         '''

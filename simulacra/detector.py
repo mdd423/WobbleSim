@@ -240,7 +240,7 @@ class Detector:
         # print(maximums)
         return min(maximums)
 
-    @partial(jnp.vectorize,argnums=(1,2))
+    @partial(jnp.vectorize,excluded=(0,))
     def add_noise(self,f, snr):
         '''
             Add noise to the flux based on the signal to noise ratio. Vectorized by JAX.

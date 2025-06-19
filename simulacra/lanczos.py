@@ -21,7 +21,7 @@ import jax.numpy as jnp
 @partial(jnp.vectorize,excluded=(1,))
 def lanczos_kernel(x,a):
     return jnp.where(x == 0, 1, \
-                     jnp.where((x > -a) & (x < a), \
+                     jnp.where((x >= -a) & (x <= a), \
                                a * jnp.sin(jnp.pi * x) * jnp.sin(jnp.pi * x / a) / (jnp.pi**2 * x**2), 0.0))
 
 def lanczos_matrix(x,xs,dx,a=4):

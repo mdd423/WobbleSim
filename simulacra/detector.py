@@ -250,7 +250,7 @@ class Detector:
             snr (np.ndarray) [float] signal to noise ratio
         '''
 
-        return f + jax.random.normal()*f/snr
+        return f + jax.random.normal(PRNG_KEY)*f/snr
 
     def simulate(self,obs_times,t_exp=None,snrs=None,wavelength_trigger=None,*args,**kwargs):
         '''

@@ -478,8 +478,8 @@ class Detector:
                 fs: np.ndarray (n,m) flux array
             '''
             sigma = res(x)
-            kern = jnp.where(jnp.abs(x-xs) > sigma*self.sigma_range,gaussian(x - xs,sigma),0.0)
-            return fs*kern/np.sum(kern)
+            kern = gaussian((x - xs)[jnp.abs(x-xs) > sigma*self.sigma_range],sigma)
+            return fs[jnp.abs(x-xs) > sigma*self.sigma_range]*kern/np.sum(kern)
         
         def convolve_epochs(xs,fs):
             '''

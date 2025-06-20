@@ -478,9 +478,11 @@ class Detector:
                 x: np.ndarray (m) log wavelength array
                 fs: np.ndarray (n,m) flux array
             '''
+            
+            mask = jnp.abs(x - xs) < (sigma*self.sigma_range)
             sigma = simulacra.star.delta_x(res(x))
-            kern = gaussian((x - xs)[jnp.abs(x - xs) < (sigma*self.sigma_range)],sigma)
-            return jnp.dot(fs[jnp.abs(x - xs) < (sigma*self.sigma_range)],kern)/np.sum(kern)
+            kern = jnp.where(mask,gaussian((x - xs),sigma),0.0)
+            return jnp.dot(kern,jnp.where(mask,fs,0.0))/jnp.sum(kern)  #jnp.dot(fs[mask],kern)/np.sum(kern)
         
         def convolve_epochs(xs,fs):
             '''

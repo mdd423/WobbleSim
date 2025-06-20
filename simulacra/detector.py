@@ -491,7 +491,7 @@ class Detector:
                 xs: np.ndarray (m) log wavelength array
                 fs: np.ndarray (n,m) flux array
             '''
-            return jax.vmap(convolve_element,in_axes=(0,None,None,None))(xs,xs,fs)
+            return jax.vmap(convolve_element,in_axes=(0,None,None))(xs,xs,fs)
         
         f_lsf = jax.vmap(convolve_epochs,in_axes=(None,0))(xs,fs)
         return f_lsf

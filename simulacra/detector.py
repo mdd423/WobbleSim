@@ -455,14 +455,15 @@ class Detector:
         print('done.')
         return data
 
-    def convolve(self,xs,fs,dx):
+    def convolve(self,xs,fs,res):
         '''
-            The convolving function that convolves the total flux with the line
-            spread function, called at .simulate
+            Convolves the total flux with the line spread function, called at .simulate
             Parameters:
             xs: np.ndarray (m) log wavelength array
             fs: np.ndarray (n,m) flux array
-            dx: float linear spacing of log wavelength
+            res: res __call__ at log wavelength returns sigma of the gaussian
+            Returns:
+            f_lsf: np.ndarray (n,m) convolved flux array
         '''        
         def gaussian(x,sigma):
             '''
@@ -474,7 +475,7 @@ class Detector:
             return np.exp(-0.5 * (x/sigma)**2) / (sigma * np.sqrt(2 * np.pi))
         def convolve_element(x,xs,fs,res):
             '''
-                Convolve the flux with the line spread function.
+                Convolve the flux with the line spread function across element.
                 Parameters:
                 x: np.ndarray (m) log wavelength array
                 fs: np.ndarray (n,m) flux array
@@ -484,6 +485,12 @@ class Detector:
             return fs*kern/np.sum(kern)
         
         def convolve_epochs(xs,fs):
+            '''
+                Convolve the flux with the line spread function across epochs.
+                Parameters:
+                xs: np.ndarray (m) log wavelength array
+                fs: np.ndarray (n,m) flux array
+            '''
             return jax.vmap(convolve_element,in_axes=(0,None,None))(xs,xs,fs,res)
         
         f_lsf = jax.vmap(convolve_epochs,in_axes=(None,0))(xs,fs)

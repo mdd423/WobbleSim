@@ -361,7 +361,7 @@ class Detector:
         #################################################
         # should be an array that can vary over pixel j or hermite m
         print('convolving...')
-        f_lsf = self.convolve(xs,fs,new_step_size)
+        f_lsf = self.convolve(xs,fs,self.resolution)
 
         data['theory']['lsf'] = {}
         data['theory']['lsf']['flux'] = f_lsf
@@ -382,11 +382,7 @@ class Detector:
         ##################################################
         print('interpolating lanczos...')
         f_exp = self.interpolate_data(x_hat,xs,f_lsf,new_step_size)
-        import matplotlib.pyplot as plt
-        plt.plot(x_hat[0,:],f_exp[0,:],'r')
-        plt.plot(xs,f_lsf[0,:],'b')
-        plt.xlim(x_hat[0,10],x_hat[0,100])
-        plt.show()
+
 
         # print('area: {}\t avg d lambda: {}\t avg lambda: {}\t avg exp times: {}'.format(self.area,np.mean(self.wave_difference),np.mean(self.wave_grid),np.mean(t_exp)))
         P_exp = self.energy_to_photon_pow(f_exp * flux_unit)
@@ -467,33 +463,30 @@ class Detector:
             xs: np.ndarray (m) log wavelength array
             fs: np.ndarray (n,m) flux array
             dx: float linear spacing of log wavelength
-        '''
-        self.lsf_coeffs = np.outer(np.ones((fs.shape[1],len(self.lsf_const_coeffs))), self.lsf_const_coeffs)
-        class ConvolveIter:
-            def __init__(obj,fs):
-                obj.fs = fs
-                obj._i =  0
-
-            def __iter__(obj):
-                # output = (fs[obj._i,:], self.lsf_coeffs,self.lsf_centering,self.sigma,self.sigma_range,new_step_size)
-                obj._i = 0
-                return obj
-
-            def __next__(obj):
-
-                if obj._i == fs.shape[0]:
-                    raise StopIteration
-                print(obj._i)
-                output = (fs[obj._i,:], self.lsf_coeffs,\
-                        self.lsf_centering,1./self.res(np.exp(xs) * u.Angstrom),\
-                        self.sigma_range,dx)
-                obj._i += 1
-                return output
-
-        with Pool() as pool:
-            obj = ConvolveIter(fs)
-            M = pool.starmap(simulacra.convolve.convolve_hermites, obj)
-        f_lsf = np.asarray(M)
+        '''        
+        def gaussian(x,sigma):
+            '''
+                Gaussian function that is used to convolve the flux with the line spread function.
+                Parameters:
+                x: np.ndarray (m) log wavelength array
+                sigma: float standard deviation of the gaussian
+            '''
+            return np.exp(-0.5 * (x/sigma)**2) / (sigma * np.sqrt(2 * np.pi))
+        def convolve_element(x,xs,fs,res):
+            '''
+                Convolve the flux with the line spread function.
+                Parameters:
+                x: np.ndarray (m) log wavelength array
+                fs: np.ndarray (n,m) flux array
+            '''
+            sigma = res(x)
+            kern = gaussian(x - xs,sigma)
+            return fs*kern/np.sum(kern)
+        
+        def convolve_epochs(xs,fs):
+            return jax.vmap(convolve_element,in_axes=(0,None,None))(xs,xs,fs,res)
+        
+        f_lsf = jax.vmap(convolve_epochs,in_axes=(None,0))(xs,fs)
         return f_lsf
 
     def interpolate_grid(self,xs,x,f):

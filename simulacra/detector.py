@@ -495,8 +495,9 @@ class Detector:
                 top = min((j+1)*self.convolve_batch_size,len(f_out))
                 if self.convolve_batch_size == 1:
                     f_out = f_out.at[j].set(convolve_element(xs[j],xs,fs))
-                f_out = f_out.at[j*self.convolve_batch_size:top].set(\
-                    jax.vmap(convolve_element,in_axes=(0,None,None))(xs[j*self.convolve_batch_size:top],xs,fs))
+                else:
+                    f_out = f_out.at[j*self.convolve_batch_size:top].set(\
+                        jax.vmap(convolve_element,in_axes=(0,None,None))(xs[j*self.convolve_batch_size:top],xs,fs))
             return f_out
         print(xs.shape,fs.shape)
         f_lsf = jax.vmap(convolve_epochs,in_axes=(None,0))(xs,fs)

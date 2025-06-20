@@ -493,6 +493,8 @@ class Detector:
             batch_num = int(np.ceil(len(f_out)/self.convolve_batch_size))
             for j in range(batch_num):
                 top = min((j+1)*self.convolve_batch_size,len(f_out))
+                if self.convolve_batch_size == 1:
+                    f_out = f_out.at[j].set(convolve_element(xs[j],xs,fs))
                 f_out = f_out.at[j*self.convolve_batch_size:top].set(\
                     jax.vmap(convolve_element,in_axes=(0,None,None))(xs[j*self.convolve_batch_size:top],xs,fs))
             return f_out

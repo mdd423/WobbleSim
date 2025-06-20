@@ -382,6 +382,10 @@ class Detector:
         ##################################################
         print('interpolating lanczos...')
         f_exp = self.interpolate_data(x_hat,xs,f_lsf,new_step_size)
+        import matplotlib.pyplot as plt
+        plt.plot(x_hat,f_exp,'r')
+        plt.plot(xs,f_lsf,'b')
+        plt.show()
 
         # print('area: {}\t avg d lambda: {}\t avg lambda: {}\t avg exp times: {}'.format(self.area,np.mean(self.wave_difference),np.mean(self.wave_grid),np.mean(t_exp)))
         P_exp = self.energy_to_photon_pow(f_exp * flux_unit)

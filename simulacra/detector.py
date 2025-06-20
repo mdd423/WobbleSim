@@ -91,7 +91,7 @@ def check_shape(value,shape):
 
 
 class Detector:
-    def __init__(self,stellar_model,resolution,loc,area,wave_grid,through_put=0.2,wave_padding=5*u.Angstrom,a=4,*args,**kwargs):
+    def __init__(self,stellar_model,resolution,loc,area,wave_grid,through_put=0.2,wave_padding=5*u.Angstrom,convolve_limit=3,a=4,*args,**kwargs):
         '''Detector model that simulates spectra from star given resolution...
 
         Detector takes on a given theoretical `stellar_model`, `resolution`, with
@@ -118,6 +118,9 @@ class Detector:
 
         # Lanczos Parameters
         self.a       = a
+
+        # Convolving Parameters
+        self.convolve_limit = convolve_limit # how many sigma to convolve over
 
         # Simulation Parameters
         self._lambmin = 0.0 * u.nm
@@ -473,6 +476,7 @@ class Detector:
                 sigma: float standard deviation of the gaussian
             '''
             return np.exp(-0.5 * (x/sigma)**2) / (sigma * np.sqrt(2 * np.pi))
+        
         def convolve_element(x,xs,fs):
             '''
                 Convolve the flux with the line spread function across element.
@@ -481,7 +485,7 @@ class Detector:
                 fs: np.ndarray (n,m) flux array
             '''
             sigma = res(x)
-            kern = gaussian(x - xs,sigma)
+            kern = jnp.where(np.abs(x-xs) > sigma*self.convolve_limit,gaussian(x - xs,sigma),0.0)
             return fs*kern/np.sum(kern)
         
         def convolve_epochs(xs,fs):

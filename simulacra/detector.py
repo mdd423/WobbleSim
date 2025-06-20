@@ -385,6 +385,7 @@ class Detector:
         import matplotlib.pyplot as plt
         plt.plot(x_hat[0,:],f_exp[0,:],'r')
         plt.plot(xs,f_lsf[0,:],'b')
+        plt.xlim(x_hat[0,10],x_hat[0,100])
         plt.show()
 
         # print('area: {}\t avg d lambda: {}\t avg lambda: {}\t avg exp times: {}'.format(self.area,np.mean(self.wave_difference),np.mean(self.wave_grid),np.mean(t_exp)))

@@ -473,7 +473,7 @@ class Detector:
                 sigma: float standard deviation of the gaussian
             '''
             return np.exp(-0.5 * (x/sigma)**2) / (sigma * np.sqrt(2 * np.pi))
-        def convolve_element(x,xs,fs,res):
+        def convolve_element(x,xs,fs):
             '''
                 Convolve the flux with the line spread function across element.
                 Parameters:
@@ -491,7 +491,7 @@ class Detector:
                 xs: np.ndarray (m) log wavelength array
                 fs: np.ndarray (n,m) flux array
             '''
-            return jax.vmap(convolve_element,in_axes=(0,None,None))(xs,xs,fs,res)
+            return jax.vmap(convolve_element,in_axes=(0,None,None,None))(xs,xs,fs)
         
         f_lsf = jax.vmap(convolve_epochs,in_axes=(None,0))(xs,fs)
         return f_lsf

@@ -132,6 +132,7 @@ class Detector:
         # LSF properties
         self.sigma_range   = 3
         self.resolution   = resolution
+        self.convolve_batch_size = 2000
 
         self.transmission_cutoff = 10.
 
@@ -477,9 +478,9 @@ class Detector:
                 x: np.ndarray (m) log wavelength array
                 fs: np.ndarray (n,m) flux array
             '''
-            sigma = res(x)
-            kern = gaussian((x - xs)[jnp.abs(x-xs) > sigma*self.sigma_range],sigma)
-            return fs[jnp.abs(x-xs) > sigma*self.sigma_range]*kern/np.sum(kern)
+            sigma = simulacra.star.delta_x(res(x))
+            kern = gaussian((x - xs)[jnp.abs(x - xs) < (sigma*self.sigma_range)],sigma)
+            return jnp.dot(fs[jnp.abs(x - xs) < (sigma*self.sigma_range)],kern)/np.sum(kern)
         
         def convolve_epochs(xs,fs):
             '''
@@ -489,11 +490,11 @@ class Detector:
                 fs: np.ndarray (n,m) flux array
             '''
             f_out = jnp.zeros(xs.shape)
-            for j in range(fs.shape[0]):
-                sigma = res(xs[j])
-                # print(np.sum(jnp.abs(xs - xs[j]) < (sigma*self.sigma_range)),sigma*self.sigma_range)
-                kern = gaussian((xs[j] - xs)[jnp.abs(xs - xs[j]) < (sigma*self.sigma_range)],sigma)
-                f_out = f_out.at[j].set(jnp.dot(fs[jnp.abs(xs - xs[j]) < (sigma*self.sigma_range)],kern)/np.sum(kern))
+            batch_num = np.ceil(len(f_out)/self.convolve_batch_size)
+            for j in range(batch_num):
+                top = min((j+1)*self.convolve_batch_size,len(f_out))
+                f_out = f_out.at[j*self.convolve_batch_size:top].set(\
+                    jax.vmap(convolve_element,in_axes=(0,None,None))(xs[j*self.convolve_batch_size:top],xs,fs))
             return f_out
         print(xs.shape,fs.shape)
         f_lsf = jax.vmap(convolve_epochs,in_axes=(None,0))(xs,fs)
@@ -511,7 +512,6 @@ class Detector:
             xs: new grid to interpolate to. 2D ij. i: epoch dimension, j: pixel dimension
         '''
         fs = np.zeros(xs.shape)
-        print(xs.shape)
         for i in range(len(x)):
             fs[i,:] = interp.CubicSpline(x[i],f[i])(xs[i,:])
         return fs

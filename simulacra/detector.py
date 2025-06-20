@@ -490,7 +490,7 @@ class Detector:
                 fs: np.ndarray (n,m) flux array
             '''
             f_out = jnp.zeros(xs.shape)
-            batch_num = np.ceil(len(f_out)/self.convolve_batch_size)
+            batch_num = int(np.ceil(len(f_out)/self.convolve_batch_size))
             for j in range(batch_num):
                 top = min((j+1)*self.convolve_batch_size,len(f_out))
                 f_out = f_out.at[j*self.convolve_batch_size:top].set(\

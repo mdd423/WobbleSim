@@ -488,14 +488,14 @@ class Detector:
                 xs: np.ndarray (m) log wavelength array
                 fs: np.ndarray (n,m) flux array
             '''
-            f_out = np.zeros(xs.shape)
+            f_out = jnp.zeros(xs.shape)
             for j in range(fs.shape[0]):
                 sigma = res(xs[j])
-                kern = gaussian((xs[j] - xs)[jnp.abs(xs[j] - xs) > sigma*self.sigma_range],sigma)
-                f_out[j] = fs[jnp.abs(xs[j]-xs) > sigma*self.sigma_range]*kern/np.sum(kern)
-                # return fs[jnp.abs(x-xs) > sigma*self.sigma_range]*kern/np.sum(kern)jax.vmap(convolve_element,in_axes=(0,None,None))(xs,xs,fs)
+                # print(np.sum(jnp.abs(xs - xs[j]) < (sigma*self.sigma_range)),sigma*self.sigma_range)
+                kern = gaussian((xs[j] - xs)[jnp.abs(xs - xs[j]) < (sigma*self.sigma_range)],sigma)
+                f_out = f_out.at[j].set(jnp.dot(fs[jnp.abs(xs - xs[j]) < (sigma*self.sigma_range)],kern)/np.sum(kern))
             return f_out
-        
+        print(xs.shape,fs.shape)
         f_lsf = jax.vmap(convolve_epochs,in_axes=(None,0))(xs,fs)
         return f_lsf
 

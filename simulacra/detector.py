@@ -518,7 +518,7 @@ class Detector:
             Interpolation function that interpolates observing wavelengths onto
             the theoretical flux. Here I use Lanczos interpolation. Defined in lanczos.py.
         '''
-        f_exp = jax.vmap(jnp.interp, in_axes=(0,None,0,None,None))(xs,x,f)
+        f_exp = jax.vmap(jnp.interp, in_axes=(0,None,0))(xs,x,f)
         # f_exp = jax.vmap(simulacra.lanczos.lanczos_interpolation, in_axes=(0,None,0,None,None))(xs,x,f,dx,self.a)
         return f_exp
 

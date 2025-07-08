@@ -394,6 +394,8 @@ class Detector:
         P_exp = self.energy_to_photon_pow(f_exp * flux_unit)
         print(P_exp.unit)
         w_hat = np.exp(x_hat) * u.Angstrom
+
+        snrs = np.array(snrs)
         if len(t_exp) == 0:
             t_exp = np.zeros(snrs.shape) * u.min
             if hasattr(wavelength_trigger,'__iter__'):

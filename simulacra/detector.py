@@ -358,7 +358,7 @@ class Detector:
         #################################################
         # should be an array that can vary over pixel j or hermite m
         print('convolving...')
-        f_lsf = self.convolve(xs,fs,self.res)
+        f_lsf = self.convolve(xs,fs,self.res,new_step_size)
 
         data['theory']['lsf'] = {}
         data['theory']['lsf']['flux'] = f_lsf

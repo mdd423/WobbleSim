@@ -132,7 +132,7 @@ class Detector:
         # LSF properties
         self.sigma_range   = 3
         self.resolution   = resolution
-        self.convolve_batch_size = 2000
+        self.convolve_batch_size = 100_000
 
         self.transmission_cutoff = 10.
 
@@ -277,7 +277,7 @@ class Detector:
                 average over when finding length of exposure time
             }
         '''
-
+        assert len(obs_times) == len(t_exp) or len(obs_times) == len(t_exp)
         if len(self.wave_grid) == 0:
             print('wave_grid is empty')
             sys.exit()
@@ -452,13 +452,14 @@ class Detector:
         print('done.')
         return data
 
-    def convolve(self,xs,fs,res):
+    def convolve(self,xs,fs,res,dx):
         '''
             Convolves the total flux with the line spread function, called at .simulate
             Parameters:
             xs: np.ndarray (m) log wavelength array
             fs: np.ndarray (n,m) flux array
-            res: res __call__ at log wavelength returns sigma of the gaussian
+            res: res __call__ at log wavelength returns instrument resolution must vectorize with jnp
+            dx: the xs spacing
             Returns:
             f_lsf: np.ndarray (n,m) convolved flux array
         '''        
@@ -469,20 +470,8 @@ class Detector:
                 x: np.ndarray (m) log wavelength array
                 sigma: float standard deviation of the gaussian
             '''
-            return np.exp(-0.5 * (x/sigma)**2) / (sigma * np.sqrt(2 * np.pi))
+            return jnp.exp(-0.5 * (x/sigma)**2) / (sigma * np.sqrt(2 * np.pi))
         
-        def convolve_element(x,xs,fs):
-            '''
-                Convolve the flux with the line spread function across element.
-                Parameters:
-                x: np.ndarray (m) log wavelength array
-                fs: np.ndarray (n,m) flux array
-            '''
-            
-            mask = jnp.abs(x - xs) < (sigma*self.sigma_range)
-            sigma = simulacra.star.delta_x(res(x))
-            kern = jnp.where(mask,gaussian((x - xs),sigma),0.0)
-            return jnp.dot(kern,jnp.where(mask,fs,0.0))/jnp.sum(kern)  #jnp.dot(fs[mask],kern)/np.sum(kern)
         
         def convolve_epochs(xs,fs):
             '''
@@ -492,16 +481,39 @@ class Detector:
                 fs: np.ndarray (n,m) flux array
             '''
             f_out = jnp.zeros(xs.shape)
-            batch_num = int(np.ceil(len(f_out)/self.convolve_batch_size))
-            for j in range(batch_num):
-                top = min((j+1)*self.convolve_batch_size,len(f_out))
-                if self.convolve_batch_size == 1:
-                    f_out = f_out.at[j].set(convolve_element(xs[j],xs,fs))
-                else:
-                    f_out = f_out.at[j*self.convolve_batch_size:top].set(\
-                        jax.vmap(convolve_element,in_axes=(0,None,None))(xs[j*self.convolve_batch_size:top],xs,fs))
+            # x_tilde = (xs[None,:] - xs[:,None])
+            size = fs.shape[0]
+            batch_size = self.convolve_batch_size
+            # convolving with changing resolution size
+            # convolve using both parallel and serial computing using
+            # a for loop and vmap, each series create convolving
+            print("batches {}".format(size//batch_size + 1))
+            for kk in range(size//batch_size + 1):
+                top = np.min(((kk+1)*batch_size,size))
+                batch_slice = np.arange((kk*batch_size),top,1)
+                
+                sigmas = jnp.vectorize(lambda x: simulacra.star.delta_x(res(x)))(xs[batch_slice])
+                
+                size_1 = 2*int((max(sigmas)*self.sigma_range)/dx) + 1
+                f_temp = jnp.zeros((size_1,len(batch_slice)))
+                x_temp = jnp.zeros((size_1,len(batch_slice)))
+                print("building convolving matrix...")
+                indices = batch_slice[None,:] + np.arange(-size_1//2,size_1//2,1,dtype=int)[:,None]
+                indices[indices > (size-1)] = size-1
+                indices[indices < 0] = 0
+                f_temp = f_temp.at[:,:].set(fs[indices])
+                x_temp = x_temp.at[:,:].set(xs[indices])
+                
+                
+                print("batch {}".format(kk))
+                def func(xss,x_temp,f_temp,sigma):
+                    x_tilde = xss - x_temp
+                    kern = gaussian(x_tilde,sigma)
+                    return jnp.dot(f_temp,kern)/np.sum(kern)
+                
+                f_out = f_out.at[batch_slice].set(jax.vmap(func,in_axes=(0,1,1,0))(xs[batch_slice],x_temp,f_temp,sigmas))
+
             return f_out
-        print(xs.shape,fs.shape)
         f_lsf = jax.vmap(convolve_epochs,in_axes=(None,0))(xs,fs)
         return f_lsf
 

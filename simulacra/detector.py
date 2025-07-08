@@ -258,7 +258,7 @@ class Detector:
         
         return f / snr
 
-    def simulate(self,obs_times,t_exp=None,snrs=None,wavelength_trigger=None,*args,**kwargs):
+    def simulate(self,obs_times,t_exp=[],snrs=[],wavelength_trigger=None,*args,**kwargs):
         '''
             The working function of the detector that creates the simulated data with the given
             parameters previously set.

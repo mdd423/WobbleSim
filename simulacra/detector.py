@@ -277,7 +277,7 @@ class Detector:
                 average over when finding length of exposure time
             }
         '''
-        assert len(obs_times) == len(t_exp) or len(obs_times) == len(t_exp)
+        assert (len(obs_times) == len(t_exp) or len(obs_times) == len(t_exp))
         if len(self.wave_grid) == 0:
             print('wave_grid is empty')
             sys.exit()

@@ -411,12 +411,9 @@ class Detector:
                     t_exp[i] = self.trigger([P_exp[i,wt_index]],snrs[i],[w_hat[i,wt_index]])
         data['data']['t_exp'] = t_exp
 
-        n_exp = np.empty(P_exp.shape)
-        snr_grid = np.empty(P_exp.shape)
-        for i in range(P_exp.shape[0]):
-            for j in range(P_exp.shape[1]):
-                n_exp[i,j] = self.shots(t_exp[i],P_exp[i,j],w_hat[i,j])
-                snr_grid[i,j] = self.signal_to_noise(t_exp[i],P_exp[i,j],w_hat[i,j])
+
+        n_exp = t_exp[:,None] * P_exp
+        snr_grid = jnp.vectorize(self.signal_to_noise)(n_exp)
 
         # print('generating true signal to noise ratios...')
         # snr_grid = self.signal_to_noise(t_exp,P_exp)
@@ -435,10 +432,8 @@ class Detector:
         # Get Error Bars
         ###################################################
         print('generating exp signal to noise ratios...')
-        snr_readout = np.empty(snr_grid.shape)
-        for i in range(P_exp.shape[0]):
-            for j in range(P_exp.shape[1]):
-                snr_readout[i,j] = self.signal_to_noise(t_exp[i],P_exp[i,j],w_hat[i,j],shots=n_readout[i,j])
+        
+        snr_readout = jnp.vectorize(self.signal_to_noise)(n_readout)
         print('t_exp: {}\nsnr: {}'.format(np.mean(t_exp),np.mean(snr_readout)))
 
         print('generating errors...')
@@ -565,36 +560,20 @@ class Detector:
             in .simulate if snrs are given not t_exp
         '''
         def func(t,powers,waves):
-            out = []
-            for i,w in enumerate(waves):
-                out.append(self.signal_to_noise(complex(t,0) * u.min, powers[i], waves[i]))#             out = self.signal_to_noise(complex(args[0],0) * u.min, *args[1:])
-            return np.abs(np.mean(out) - snr)**2
+            
+            out = self.signal_to_noise(complex(t,0) * u.min, powers, waves)#             out = self.signal_to_noise(complex(args[0],0) * u.min, *args[1:])
+            return jnp.abs(jnp.mean(out) - snr)**2
 
         res = scipy.optimize.minimize(func, 1.0, args=(P, wavelength))
 
         return res.x[0] * u.min
 
-    def signal_to_noise(self,t_exp,P,wavelength,shots=None):
+    def signal_to_noise(self,N_shots,*args):
         '''
             Calculate signal to noise ratio.
         '''
-        if shots is None:
-            shots = complex(self.shots(t_exp,P,wavelength),0)
-        snr =  shots \
-        / (np.sqrt(shots + self.noise_source(t_exp,P,wavelength)))
-        return snr
-
-    def shots(self,t_exp,P,wavelength):
-        '''
-            Convert photons per minute to total photons
-        '''
-        return t_exp * P
-
-    def noise_source(self,t_exp,P,wavelength):
-        '''
-            Noise sources of detector
-        '''
-        return 0.0
+        
+        return jnp.sqrt(N_shots)
 
     def energy_to_photon_pow(self,flux,*args):
         '''

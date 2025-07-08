@@ -277,7 +277,16 @@ class Detector:
                 average over when finding length of exposure time
             }
         '''
-        assert (len(obs_times) == len(t_exp) or len(obs_times) == len(snrs))
+        if ((len(obs_times) == len(t_exp)) and (len(snrs) != 0)):
+            logging.error('cannot have both t_exp and snrs set, please choose one.')
+            sys.exit()
+        if ((len(obs_times) == len(snrs)) and (len(t_exp) != 0)):
+            logging.error('cannot have both t_exp and snrs set, please choose one.')
+            sys.exit()
+        if not ((len(obs_times) == len(snrs)) or (len(obs_times) == len(t_exp))):
+            logging.error('obs_times must be the same length as either t_exp or snrs.')
+            sys.exit()
+
         if len(self.wave_grid) == 0:
             print('wave_grid is empty')
             sys.exit()
@@ -385,7 +394,7 @@ class Detector:
         P_exp = self.energy_to_photon_pow(f_exp * flux_unit)
         print(P_exp.unit)
         w_hat = np.exp(x_hat) * u.Angstrom
-        if t_exp is None:
+        if len(t_exp) == 0:
             t_exp = np.zeros(snrs.shape) * u.min
             if hasattr(wavelength_trigger,'__iter__'):
 

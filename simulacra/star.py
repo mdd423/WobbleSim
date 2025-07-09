@@ -1,4 +1,6 @@
 import numpy as np
+import jax.numpy as jnp
+import jax
 
 import astropy.units as u
 import astropy.constants as const
@@ -74,15 +76,15 @@ def download_phoenix_model(star,outdir=None):
         return outname
 
 def velocities(shifts):
-    expon = np.exp(2*shifts)
+    expon = jnp.exp(2*shifts)
     vel = const.c * (expon-1)/(1 + expon)
     return vel
 
 def delta_x(R):
-    return np.log(1+1/R)
+    return jnp.log(1+1/R)
 
 def shifts(vel):
-    return (1/2) * np.log((1 + vel/(const.c))/(1 - vel/(const.c)))
+    return (1/2) * jnp.log((1 + vel/(const.c))/(1 - vel/(const.c)))
 
 def get_random_times(n,tframe=365*u.day):
     now = atime.Time.now()

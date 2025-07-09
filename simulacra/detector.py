@@ -35,38 +35,6 @@ def dict_of_attr(data,obj):
             pass
     return data
 
-def get_median_difference(x):
-
-    return np.median([t - s for s, t in zip(x, x[1:])])
-
-
-def average_difference(x):
-    return np.mean([t - s for s, t in zip(x, x[1:])])
-
-# def generate_errors(f,snr):
-#     xs,ys = np.where(f < 0)
-#     for x,y in zip(xs,ys):
-#         f[x,y] = 0
-#     f_err = np.empty(f.shape)
-#     for i in range(f_err.shape[0]):
-#         for j in range(f_err.shape[1]):
-#             f_err[i,j] = f[i,j]/snr[i,j]
-#     return f_err
-
-# from numba import vectorize, float64
-
-# @jnp.vectorize
-# def generate_errors_v(f, snr):
-#     return f / snr
-
-# def add_noise(f_exp,snr_grid):
-#     f_readout = np.empty(f_exp.shape)
-#     for i in range(f_exp.shape[0]):
-#         print('snr {}: {}'.format(i,np.median(snr_grid[i,:])))
-#         for j in range(f_exp.shape[1]):
-#             f_readout[i,j] = f_exp[i,j] + random.normal(0.0,f_exp[i,j]/snr_grid[i,j])
-#     return f_readout
-
 def interpolate_mask(xs,mask_the,x_hat):
     return np.array([interp.interp1d(xs,mask_the[i,:].astype(float),kind='nearest')(x_hat[i,:]) for i in range(x_hat.shape[0])]).astype(bool)
 
@@ -297,7 +265,7 @@ class Detector:
 
         data['data']['rvs'], data['theory']['star']['deltas'] = rvs, deltas
         # data['theory']['star']['flux'], data['theory']['star']['wave'] = flux_stellar, wave_stellar
-        differences = [get_median_difference(np.log(wave_stellar.to(u.Angstrom).value))]
+        differences = [np.median(np.diff(np.log(wave_stellar.to(u.Angstrom).value)))]
 
         # Generate Transmission
         ###################################################
@@ -308,7 +276,7 @@ class Detector:
             
             flux, wave = model.generate_transmission(self.stellar_model,self,obs_times)
             trans_flux.append(flux), trans_wave.append(wave)
-            differences += [get_median_difference(np.log(wave[iii][:].to(u.Angstrom).value)) for iii in range(len(wave))]
+            differences += [np.median(np.diff(np.log(wave[iii][:].to(u.Angstrom).value))) for iii in range(len(wave))]
             # data['theory'][model._name]['flux'],data['theory'][model._name]['wave'] = flux, wave
             print(model, differences)
         new_step_size = min(differences)

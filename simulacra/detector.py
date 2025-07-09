@@ -501,12 +501,13 @@ class Detector:
         '''
         def func(t,powers,waves):
             
-            out = powers*t / self.noise_model(complex(t,0) * u.min * powers, waves, t)#             out = self.signal_to_noise(complex(args[0],0) * u.min, *args[1:])
-            return jnp.abs(jnp.mean(out) - snr)**2
-
-        print('finding exposure time for snr: {}'.format(snr))
-        res = scipy.optimize.minimize(func, 1.0, args=(P,wavelength))
-
+            out = powers * t / self.noise_model(t * powers, waves, t)
+            return jnp.mean((out - snr)**2)
+        
+        print('optimizing exposure time for snr: {}'.format(snr), P.unit)        
+        res = scipy.optimize.minimize(func, 0.5, args=(P.to(1/u.min).value,wavelength),\
+                                      method='BFGS',options={'gtol':1e-3},jac='3-point')
+        print(res)
         return res.x[0] * u.min
 
     def noise_model(self,N_shots,wavelength,t_exp,*args):

@@ -238,26 +238,6 @@ class Detector:
         # print(maximums)
         return min(maximums)
 
-    def add_noise(self, f, snr):
-        '''
-            Add noise to the flux based on the signal to noise ratio. Vectorized by JAX.
-            Parameters:
-            f (np.ndarray) [float] flux array
-            snr (np.ndarray) [float] signal to noise ratio
-        '''
-
-        return f + jax.random.normal(PRNG_KEY,shape=f.shape,dtype=f.dtype)*f/snr
-    
-    def generate_errors(self,f,snr):
-        '''
-            Generate errors based on the flux and signal to noise ratio.
-            Parameters:
-            f (np.ndarray) [float] flux array
-            snr (np.ndarray) [float] signal to noise ratio
-        '''
-        
-        return f / snr
-
     def simulate(self,obs_times,t_exp=[],snrs=[],wavelength_trigger=None,*args,**kwargs):
         '''
             The working function of the detector that creates the simulated data with the given
@@ -386,7 +366,7 @@ class Detector:
 
         # Interpolate using Lanczos and Add Noise
         ##################################################
-        print('interpolating lanczos...')
+        print('interpolating data...')
         f_exp = self.interpolate_data(x_hat,xs,f_lsf,new_step_size)
 
 
@@ -413,7 +393,7 @@ class Detector:
 
 
         n_exp = t_exp[:,None] * P_exp
-        snr_grid = jnp.vectorize(self.signal_to_noise)(n_exp)
+        snr_grid = jnp.vectorize(self.signal_to_noise)(n_readout,w_hat,t_exp)
 
         # print('generating true signal to noise ratios...')
         # snr_grid = self.signal_to_noise(t_exp,P_exp)
@@ -433,7 +413,7 @@ class Detector:
         ###################################################
         print('generating exp signal to noise ratios...')
         
-        snr_readout = jnp.vectorize(self.signal_to_noise)(n_readout)
+        snr_readout = jnp.vectorize(self.signal_to_noise)(n_readout,w_hat,t_exp)
         print('t_exp: {}\nsnr: {}'.format(np.mean(t_exp),np.mean(snr_readout)))
 
         print('generating errors...')
@@ -561,19 +541,39 @@ class Detector:
         '''
         def func(t,powers,waves):
             
-            out = self.signal_to_noise(complex(t,0) * u.min, powers, waves)#             out = self.signal_to_noise(complex(args[0],0) * u.min, *args[1:])
+            out = powers*t / self.noise_model(complex(t,0) * u.min * powers, waves, t)#             out = self.signal_to_noise(complex(args[0],0) * u.min, *args[1:])
             return jnp.abs(jnp.mean(out) - snr)**2
 
         res = scipy.optimize.minimize(func, 1.0, args=(P, wavelength))
 
         return res.x[0] * u.min
 
-    def signal_to_noise(self,N_shots,*args):
+    def noise_model(self,N_shots,Pow,t_exp,*args):
         '''
             Calculate signal to noise ratio.
         '''
         
         return jnp.sqrt(N_shots)
+
+    def add_noise(self, f, snr):
+        '''
+            Add noise to the flux based on the signal to noise ratio. Vectorized by JAX.
+            Parameters:
+            f (np.ndarray) [float] flux array
+            snr (np.ndarray) [float] signal to noise ratio
+        '''
+
+        return f + jax.random.normal(PRNG_KEY,shape=f.shape,dtype=f.dtype)*f/snr
+    
+    def generate_errors(self,f,snr):
+        '''
+            Generate errors based on the flux and signal to noise ratio.
+            Parameters:
+            f (np.ndarray) [float] flux array
+            snr (np.ndarray) [float] signal to noise ratio
+        '''
+        
+        return f / snr
 
     def energy_to_photon_pow(self,flux,*args):
         '''

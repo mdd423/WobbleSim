@@ -342,6 +342,7 @@ class Detector:
         w_hat = np.exp(x_hat) * u.Angstrom
 
         snrs = np.array(snrs)
+        print('snrs: ', snrs,t_exp)
         if len(t_exp) == 0:
             print('check')
             t_exp = np.zeros(snrs.shape) * u.min

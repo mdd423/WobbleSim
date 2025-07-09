@@ -363,7 +363,6 @@ class Detector:
 
         # print('generating true signal to noise ratios...')
         print('adding noise...')
-        out_shape = true_err_grid.shape
         n_readout = jnp.vectorize(self.add_noise)(n_exp,true_err_grid)
 
         data['parameters']['true_snr'] = f_exp/true_err_grid
@@ -379,7 +378,7 @@ class Detector:
         print('generating errors...')
         nerr_out = jax.vmap(self.noise_model,in_axes=[0,0,0])(n_readout,w_hat,t_exp)
         print('t_exp: {}\nsnr: {}'.format(np.mean(t_exp),np.mean(n_readout/nerr_out)))
-        data['data']['ferr']        = nerr_out
+        data['data']['ferr'] = nerr_out
 
         # Pack Parameters into Dictionary
         ###################################################

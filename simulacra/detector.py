@@ -394,6 +394,18 @@ class Detector:
         print('done.')
         return data
 
+    def kernel(self,x,sigma,xss):
+        '''
+            Gaussian function that is used to convolve the flux with the line spread function.
+            Parameters:
+            x: xss - x with in sigma_range*sigma
+            sigma: float standard deviation of the gaussian
+            xss: log wavelength value
+            Returns:
+            np.ndarray (m) gaussian kernel evaluated at xss
+        '''
+        return jnp.exp(-0.5 * (x/sigma)**2) / (sigma * np.sqrt(2 * np.pi))
+
     def convolve(self,xs,fs,res,dx):
         '''
             Convolves the total flux with the line spread function, called at .simulate
@@ -405,15 +417,6 @@ class Detector:
             Returns:
             f_lsf: np.ndarray (n,m) convolved flux array
         '''        
-        def gaussian(x,sigma):
-            '''
-                Gaussian function that is used to convolve the flux with the line spread function.
-                Parameters:
-                x: np.ndarray (m) log wavelength array
-                sigma: float standard deviation of the gaussian
-            '''
-            return jnp.exp(-0.5 * (x/sigma)**2) / (sigma * np.sqrt(2 * np.pi))
-        
         
         def convolve_epochs(xs,fs):
             '''
@@ -437,20 +440,19 @@ class Detector:
                 sigmas = jnp.vectorize(lambda x: simulacra.star.delta_x(res(x)))(xs[batch_slice])
                 
                 size_1 = 2*int((max(sigmas)*self.sigma_range)/dx) + 1
-                f_temp = jnp.zeros((size_1,len(batch_slice)))
-                x_temp = jnp.zeros((size_1,len(batch_slice)))
+
                 print("building convolving matrix...")
                 indices = batch_slice[None,:] + np.arange(-size_1//2,size_1//2,1,dtype=int)[:,None]
                 indices[indices > (size-1)] = size-1
                 indices[indices < 0] = 0
-                f_temp = f_temp.at[:,:].set(fs[indices])
-                x_temp = x_temp.at[:,:].set(xs[indices])
+                f_temp = fs[indices]
+                x_temp = xs[indices]
                 
                 
                 print("batch {}".format(kk))
                 def func(xss,x_temp,f_temp,sigma):
                     x_tilde = xss - x_temp
-                    kern = gaussian(x_tilde,sigma)
+                    kern = self.kernel(x_tilde,sigma,xss)
                     return jnp.dot(f_temp,kern)/np.sum(kern)
                 
                 f_out = f_out.at[batch_slice].set(jax.vmap(func,in_axes=(0,1,1,0))(xs[batch_slice],x_temp,f_temp,sigmas))

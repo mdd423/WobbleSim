@@ -343,6 +343,7 @@ class Detector:
 
         snrs = np.array(snrs)
         if len(t_exp) == 0:
+            print('check')
             t_exp = np.zeros(snrs.shape) * u.min
             if hasattr(wavelength_trigger,'__iter__'):
 

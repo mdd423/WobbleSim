@@ -265,7 +265,7 @@ class Detector:
 
         data['data']['rvs'], data['theory']['star']['deltas'] = rvs, deltas
         # data['theory']['star']['flux'], data['theory']['star']['wave'] = flux_stellar, wave_stellar
-        differences = [np.median(np.diff(np.log(wave_stellar.to(u.Angstrom).value)))]
+        differences = [np.min(np.diff(np.log(wave_stellar.to(u.Angstrom).value)))]
 
         # Generate Transmission
         ###################################################
@@ -276,7 +276,7 @@ class Detector:
             
             flux, wave = model.generate_transmission(self.stellar_model,self,obs_times)
             trans_flux.append(flux), trans_wave.append(wave)
-            differences += [np.median(np.diff(np.log(wave[iii][:].to(u.Angstrom).value))) for iii in range(len(wave))]
+            differences += [np.min(np.diff(np.log(wave[iii][:].to(u.Angstrom).value))) for iii in range(len(wave))]
             # data['theory'][model._name]['flux'],data['theory'][model._name]['wave'] = flux, wave
             print(model, differences)
         new_step_size = min(differences)

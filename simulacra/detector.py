@@ -440,7 +440,7 @@ class Detector:
                 sigmas = jnp.vectorize(lambda x: simulacra.star.delta_x(res(x)))(xs[batch_slice])
                 
                 size_1 = 2*int((max(sigmas)*self.sigma_range)/dx) + 1
-
+                print(max(sigmas)/dx,dx,max(sigmas))
                 print("building convolving matrix...")
                 indices = batch_slice[None,:] + np.arange(-size_1//2,size_1//2,1,dtype=int)[:,None]
                 indices[indices > (size-1)] = size-1

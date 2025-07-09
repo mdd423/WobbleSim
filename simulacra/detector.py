@@ -502,6 +502,7 @@ class Detector:
             out = powers*t / self.noise_model(complex(t,0) * u.min * powers, waves, t)#             out = self.signal_to_noise(complex(args[0],0) * u.min, *args[1:])
             return jnp.abs(jnp.mean(out) - snr)**2
 
+        print('finding exposure time for snr: {}'.format(snr))
         res = scipy.optimize.minimize(func, 1.0, args=(P,wavelength))
 
         return res.x[0] * u.min

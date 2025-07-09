@@ -369,8 +369,6 @@ class Detector:
         print('interpolating data...')
         f_exp = self.interpolate_data(x_hat,xs,f_lsf,new_step_size)
 
-
-        # print('area: {}\t avg d lambda: {}\t avg lambda: {}\t avg exp times: {}'.format(self.area,np.mean(self.wave_difference),np.mean(self.wave_grid),np.mean(t_exp)))
         P_exp = self.energy_to_photon_pow(f_exp * flux_unit)
         print(P_exp.unit)
         w_hat = np.exp(x_hat) * u.Angstrom
@@ -391,17 +389,16 @@ class Detector:
                     t_exp[i] = self.trigger([P_exp[i,wt_index]],snrs[i],[w_hat[i,wt_index]])
         data['data']['t_exp'] = t_exp
 
-
         n_exp = t_exp[:,None] * P_exp
-        snr_grid = jnp.vectorize(self.signal_to_noise)(n_readout,w_hat,t_exp)
+        print(n_exp.shape,w_hat.shape,t_exp.shape)
+        true_err_grid = jax.vmap(self.noise_model,in_axes=[0,0,0])(n_exp,w_hat,t_exp)
 
         # print('generating true signal to noise ratios...')
-        # snr_grid = self.signal_to_noise(t_exp,P_exp)
         print('adding noise...')
-        out_shape = snr_grid.shape
-        n_readout = self.add_noise(n_exp.flatten(),snr_grid.flatten()).reshape(out_shape)
+        out_shape = true_err_grid.shape
+        n_readout = jnp.vectorize(self.add_noise)(n_exp,true_err_grid)
 
-        data['parameters']['true_snr'] = snr_grid
+        data['parameters']['true_snr'] = f_exp/true_err_grid
         data['data']['flux_expected'] = n_exp
         data['data']['flux'] = n_readout
 
@@ -411,18 +408,10 @@ class Detector:
 
         # Get Error Bars
         ###################################################
-        print('generating exp signal to noise ratios...')
-        
-        snr_readout = jnp.vectorize(self.signal_to_noise)(n_readout,w_hat,t_exp)
-        print('t_exp: {}\nsnr: {}'.format(np.mean(t_exp),np.mean(snr_readout)))
-
         print('generating errors...')
-        nerr_out = self.generate_errors(n_readout.flatten(),snr_readout.flatten()).reshape(out_shape)
-
-        data['data']['snr_readout'] = snr_readout
+        nerr_out = jax.vmap(self.noise_model,in_axes=[0,0,0])(n_readout,w_hat,t_exp)
+        print('t_exp: {}\nsnr: {}'.format(np.mean(t_exp),np.mean(n_readout/nerr_out)))
         data['data']['ferr']        = nerr_out
-
-        # mask_2 = np.where(np.isnan(nerr_out))
 
         # Pack Parameters into Dictionary
         ###################################################
@@ -544,18 +533,18 @@ class Detector:
             out = powers*t / self.noise_model(complex(t,0) * u.min * powers, waves, t)#             out = self.signal_to_noise(complex(args[0],0) * u.min, *args[1:])
             return jnp.abs(jnp.mean(out) - snr)**2
 
-        res = scipy.optimize.minimize(func, 1.0, args=(P, wavelength))
+        res = scipy.optimize.minimize(func, 1.0, args=(P,wavelength))
 
         return res.x[0] * u.min
 
-    def noise_model(self,N_shots,Pow,t_exp,*args):
+    def noise_model(self,N_shots,wavelength,t_exp,*args):
         '''
             Calculate signal to noise ratio.
         '''
         
         return jnp.sqrt(N_shots)
 
-    def add_noise(self, f, snr):
+    def add_noise(self, f, err):
         '''
             Add noise to the flux based on the signal to noise ratio. Vectorized by JAX.
             Parameters:
@@ -563,7 +552,7 @@ class Detector:
             snr (np.ndarray) [float] signal to noise ratio
         '''
 
-        return f + jax.random.normal(PRNG_KEY,shape=f.shape,dtype=f.dtype)*f/snr
+        return f + jax.random.normal(PRNG_KEY,shape=f.shape,dtype=f.dtype)*err
     
     def generate_errors(self,f,snr):
         '''

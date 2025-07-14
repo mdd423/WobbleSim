@@ -295,7 +295,7 @@ class Detector:
             trans_arrs[j,:,:] = self.interpolate_grid(np.outer(np.ones(epoches),xs),[np.log(x.to(u.Angstrom).value) for x in trans_wave[j][:]],trans_flux[j])
 
         print('combining grids...')
-        data['theory']['star']['flux'] = stellar_arr
+        data['theory']['star']['flux'] = np.array(stellar_arr)
         fs        = stellar_arr.copy()
         flux_unit = flux_stellar.unit
         mask_the  = np.zeros(fs.shape,dtype=bool)
@@ -307,9 +307,9 @@ class Detector:
             mask_the = (trans_arrs[j,:,:] > self.transmission_cutoff) | mask_the
             data['theory'][model._name]['flux'] = trans_arrs[j,:,:]
         data['theory']['total'] = {}
-        data['theory']['total']['flux'] = fs
+        data['theory']['total']['flux'] = np.array(fs)
         data['theory']['total']['wave'] = np.exp(xs) * u.Angstrom
-        data['theory']['total']['mask'] = mask_the
+        data['theory']['total']['mask'] = np.array(mask_the)
 
         # Convolving using Hermite Coeffs
         #################################################
@@ -318,7 +318,7 @@ class Detector:
         f_lsf = self.convolve(xs,fs,self.res,new_step_size)
 
         data['theory']['lsf'] = {}
-        data['theory']['lsf']['flux'] = f_lsf
+        data['theory']['lsf']['flux'] = np.array(f_lsf)
 
         # Generate transform wavelength grid using jitter & stretch
         ##################################################
@@ -330,7 +330,7 @@ class Detector:
 
         print('xs: {} {}\nxhat: {} {}'.format(np.exp(np.min(xs)),np.exp(np.max(xs)),np.exp(np.min(x_hat)),np.exp(np.max(x_hat))))
         data_mask = interpolate_mask(xs,mask_the,x_hat)
-        data['data']['mask'] = data_mask
+        data['data']['mask'] = np.array(data_mask)
 
         # Interpolate using Lanczos and Add Noise
         ##################################################
@@ -338,7 +338,6 @@ class Detector:
         f_exp = self.interpolate_data(x_hat,xs,f_lsf,new_step_size)
 
         P_exp = self.energy_to_photon_pow(f_exp * flux_unit)
-        print(P_exp.unit)
         w_hat = np.exp(x_hat) * u.Angstrom
 
         snrs = np.array(snrs)
@@ -360,16 +359,15 @@ class Detector:
         data['data']['t_exp'] = t_exp
 
         n_exp = t_exp[:,None] * P_exp
-        print(n_exp.shape,w_hat.shape,t_exp.shape)
         true_err_grid = jax.vmap(self.noise_model,in_axes=[0,0,0])(n_exp,w_hat,t_exp)
 
         # print('generating true signal to noise ratios...')
         print('adding noise...')
         n_readout = jnp.vectorize(self.add_noise)(n_exp,true_err_grid)
 
-        data['parameters']['true_snr'] = f_exp/true_err_grid
-        data['data']['flux_expected'] = n_exp
-        data['data']['flux'] = n_readout
+        data['parameters']['true_snr'] = np.array(f_exp/true_err_grid)
+        data['data']['flux_expected'] = np.array(n_exp)
+        data['data']['flux'] = np.array(n_readout)
 
         data['data']['mask'] += (n_readout <= 0.0)
         data['data']['mask'] = data['data']['mask'].astype(bool)
@@ -380,7 +378,7 @@ class Detector:
         print('generating errors...')
         nerr_out = jax.vmap(self.noise_model,in_axes=[0,0,0])(n_readout,w_hat,t_exp)
         print('t_exp: {}\nsnr: {}'.format(np.mean(t_exp),np.mean(n_readout/nerr_out)))
-        data['data']['ferr'] = nerr_out
+        data['data']['ferr'] = np.array(nerr_out)
 
         # Pack Parameters into Dictionary
         ###################################################

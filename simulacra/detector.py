@@ -500,7 +500,7 @@ class Detector:
         def func(t,powers,waves):
             
             out = powers * t / self.noise_model(t * powers, waves, t)
-            return jnp.mean((out - snr)**2)
+            return jnp.nanmean((out - snr)**2)
         
         print('optimizing exposure time for snr: {}'.format(snr), P.unit)        
         res = scipy.optimize.minimize(func, 0.5, args=(P.to(1/u.min).value,wavelength),\

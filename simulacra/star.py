@@ -84,7 +84,7 @@ def delta_x(R):
     return jnp.log(1+1/R)
 
 def shifts(vel):
-    return (1/2) * jnp.log((1 + vel/(const.c))/(1 - vel/(const.c)))
+    return (1/2) * jnp.log((1 + (vel/const.c).to(1.0).value)/(1 - (vel/const.c).to(1.0).value))
 
 def get_random_times(n,tframe=365*u.day):
     now = atime.Time.now()

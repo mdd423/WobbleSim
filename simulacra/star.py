@@ -40,22 +40,42 @@ def download_phoenix_wave(outdir):
 
         return outname
 
-def download_phoenix_model(star,outdir=None):
-    if star.z >= -0.1 and star.z <= 0.1:
-        z_directory = 'Z-{:.1f}'.format(star.z)
+def download_phoenix_model(zzz,logg,alpha,temperature,outdir=None):
+    temp_grid = np.concatenate((np.arange(2300,7000,100),np.arange(7000,12000,200)))
+    logg_grid = np.arange(0.0,6.0,0.5)
+    zzz__grid = np.concatenate((np.arange(-4,-2,1),np.arange(-2,1,0.5)))
+    alph_grid = np.arange(-0.2,1.2,0.2)
+    def find_nearest(array, value):
+        array = np.asarray(array)
+        idx = (np.abs(array - value)).argmin()
+        return array[idx]
+    print('your parameters: T {}, logg {}, alpha {}, z {}'.format(temperature,logg,alpha,zzz))
+    temperature = find_nearest(temp_grid,temperature)
+    zzz = find_nearest(zzz__grid,zzz)
+    alpha = find_nearest(alph_grid,alpha)
+    logg = find_nearest(logg_grid,logg)
+
+    parameters = {'temperature': temperature, 'logg': logg, 'alpha': alpha, 'zzz': zzz}
+
+    print('setting: T {}, logg {}, alpha {}, z {}'.format(temperature,logg,alpha,zzz))
+    
+    
+    if zzz >= -0.1 and zzz <= 0.1:
+        z_directory = 'Z-{:.1f}'.format(zzz)
     else:
-        z_directory = 'Z{:+.1f}'.format(star.z)
+        z_directory = 'Z{:+.1f}'.format(zzz)
     directories = ['HiResFITS','PHOENIX-ACES-AGSS-COND-2011',z_directory]
     # print(directories)
-    if star.alpha != 0.0:
-        directories[-1] += '.Alpha={:+.2f}'.format(star.alpha)
+    if alpha != 0.0:
+        directories[-1] += '.Alpha={:+.2f}'.format(alpha)
 
-    filename = 'lte{:05d}-{:1.2f}'.format(star.temperature,star.logg) + directories[-1][1:] + '.PHOENIX-ACES-AGSS-COND-2011-HiRes.fits'
-    outname = os.path.join(outdir,filename)
+    filename = 'lte{:05d}-{:1.2f}'.format(temperature,logg) + directories[-1][1:] + '.PHOENIX-ACES-AGSS-COND-2011-HiRes.fits'
+    os.makedirs(os.path.join(outdir,*directories),exist_ok=True)
+    outname = os.path.join(outdir,*directories,filename)
     print(outname)
     if os.path.isfile(outname):
         print('using saved flux file')
-        return outname
+        return outname, parameters
 
     else:
         from ftplib import FTP
@@ -73,8 +93,8 @@ def download_phoenix_model(star,outdir=None):
 
         ftp.close() # close the connection
 
-        return outname
-
+        return outname, parameters
+    
 def velocities(shifts):
     expon = jnp.exp(2*shifts)
     vel = const.c * (expon-1)/(1 + expon)
@@ -180,7 +200,12 @@ class PhoenixModel(TheoryModel):
         self.logg  = logg
         self.alpha = alpha
         self.wavename = download_phoenix_wave(self.outdir)
-        self.fluxname = download_phoenix_model(self,self.outdir)
+        self.fluxname,parameters = download_phoenix_model(self.z,self.logg,self.alpha,self.temperature,self.outdir)
+
+        self.temperature = parameters['temperature']
+        self.logg       = parameters['logg'] 
+        self.alpha      = parameters['alpha']
+        self.z          = parameters['zzz']
 
         grid = astropy.io.fits.open(self.fluxname)
         self.stellar_radius = grid['PRIMARY'].header['PHXREFF'] * u.cm

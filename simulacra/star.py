@@ -41,19 +41,19 @@ def download_phoenix_wave(outdir):
         return outname
 
 def download_phoenix_model(zzz,logg,alpha,temperature,outdir=None):
-    temp_grid = np.concatenate((np.arange(2300,7000,100),np.arange(7000,12000,200)))
-    logg_grid = np.arange(0.0,6.0,0.5)
-    zzz__grid = np.concatenate((np.arange(-4,-2,1),np.arange(-2,1,0.5)))
-    alph_grid = np.arange(-0.2,1.2,0.2)
+    temp_grid = np.concatenate((np.arange(2300,7000,100),np.arange(7000,12200,200)))
+    logg_grid = np.arange(0.0,6.5,0.5)
+    zzz__grid = np.concatenate((np.arange(-4,-2,1),np.arange(-2,1.5,0.5)))
+    alph_grid = np.arange(-0.2,1.4,0.2)
     def find_nearest(array, value):
         array = np.asarray(array)
         idx = (np.abs(array - value)).argmin()
         return array[idx]
     print('your parameters: T {}, logg {}, alpha {}, z {}'.format(temperature,logg,alpha,zzz))
     temperature = find_nearest(temp_grid,temperature)
-    zzz = find_nearest(zzz__grid,zzz)
+    zzz   = find_nearest(zzz__grid,zzz)
     alpha = find_nearest(alph_grid,alpha)
-    logg = find_nearest(logg_grid,logg)
+    logg  = find_nearest(logg_grid,logg)
 
     parameters = {'temperature': temperature, 'logg': logg, 'alpha': alpha, 'zzz': zzz}
 

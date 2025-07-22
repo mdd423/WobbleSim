@@ -504,7 +504,7 @@ class Detector:
         
         print('optimizing exposure time for snr: {}'.format(snr), P.unit)        
         res = scipy.optimize.minimize(func, 0.5, args=(P.to(1/u.min).value,wavelength),\
-                                      method='BFGS',options={'gtol':1e-3},jac='3-point')
+                                      method='SLSQP',options={'gtol':1e-3},jac='3-point',bounds=[[0.0,np.inf]])
         print(res)
         return res.x[0] * u.min
 

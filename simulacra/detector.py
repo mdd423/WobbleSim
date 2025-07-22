@@ -363,9 +363,9 @@ class Detector:
 
         # print('generating true signal to noise ratios...')
         print('adding noise...')
-        n_readout = jnp.vectorize(self.add_noise)(n_exp,true_err_grid)
+        n_readout = self.add_noise(n_exp,true_err_grid)
 
-        data['parameters']['true_snr'] = np.array(f_exp/true_err_grid)
+        # data['parameters']['true_snr'] = np.array(f_exp/true_err_grid)
         data['data']['flux_expected'] = np.array(n_exp)
         data['data']['flux'] = np.array(n_readout)
 

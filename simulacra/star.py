@@ -210,12 +210,12 @@ class PhoenixModel(TheoryModel):
 
         # converting from vacuum to air wavelengths using Morton2000
         waves = read_in_fits(self.wavename) * u.Angstrom
-        filter_spec = (self.wave > 250*u.nm)
+        filter_spec = (waves > 250*u.nm)
 
         grid = astropy.io.fits.open(self.fluxname)
         self.stellar_radius = grid['PRIMARY'].header['PHXREFF'] * u.cm
         self.surface_flux = (grid['PRIMARY'].data * u.erg / u.cm**3 / u.s)[filter_spec]
-        self.wave     = waves [filter_spec]
+        self.wave     = waves[filter_spec]
 
         # make these attributes of the phoenix model
         self.distance  = coord.Distance(distance)

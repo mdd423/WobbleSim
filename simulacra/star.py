@@ -7,6 +7,7 @@ import astropy.constants as const
 import astropy.io.fits
 import astropy.time as atime
 import astropy.coordinates as coord
+import specutils
 
 import numpy.random as random
 import os
@@ -207,10 +208,14 @@ class PhoenixModel(TheoryModel):
         self.alpha      = parameters['alpha']
         self.z          = parameters['zzz']
 
+        # converting from vacuum to air wavelengths using Morton2000
+        waves = read_in_fits(self.wavename) * u.Angstrom
+        filter_spec = (self.wave > 250*u.nm)
+
         grid = astropy.io.fits.open(self.fluxname)
         self.stellar_radius = grid['PRIMARY'].header['PHXREFF'] * u.cm
-        self.surface_flux = grid['PRIMARY'].data * u.erg / u.cm**3 / u.s
-        self.wave     = read_in_fits(self.wavename) * u.Angstrom
+        self.surface_flux = (grid['PRIMARY'].data * u.erg / u.cm**3 / u.s)[filter_spec]
+        self.wave     = waves [filter_spec]
 
         # make these attributes of the phoenix model
         self.distance  = coord.Distance(distance)
@@ -242,7 +247,8 @@ class PhoenixModel(TheoryModel):
         # plt.show()
         obs_flux = np.outer(np.ones(obs_times.shape),obs_flux)
         # obs_flux = stellar_to_detector_flux(self,detector,exp_times)
-        return obs_flux, self.wave
+        
+        return obs_flux, self.wave/specutils.utils.wcs_utils.refraction_index(self.wave, method='Morton2000', co2=None)
 
     def plot(self,ax,epoch_idx,normalize=None,nargs=[]):
         y = self.flux

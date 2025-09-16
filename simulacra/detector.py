@@ -26,8 +26,9 @@ from multiprocessing import Pool
 
 PRNG_KEY = jax.random.PRNGKey(1010101)
 
-def dict_of_attr(data,obj):
-    obj_list = [a for a in dir(obj) if not a.startswith('__')]
+
+def dict_of_attr(data, obj):
+    obj_list = [a for a in dir(obj) if not a.startswith("__")]
     for ele in obj_list:
         try:
             data[ele] = getattr(obj, ele)
@@ -35,21 +36,35 @@ def dict_of_attr(data,obj):
             pass
     return data
 
-def interpolate_mask(xs,mask_the,x_hat):
-    return np.array([interp.interp1d(xs,mask_the[i,:].astype(float),kind='nearest')(x_hat[i,:]) for i in range(x_hat.shape[0])]).astype(bool)
 
-def check_type(value,type):
-    if isinstance(value,u.Quantity):
+def interpolate_mask(xs, mask_the, x_hat):
+    return np.array(
+        [
+            interp.interp1d(xs, mask_the[i, :].astype(float), kind="nearest")(
+                x_hat[i, :]
+            )
+            for i in range(x_hat.shape[0])
+        ]
+    ).astype(bool)
+
+
+def check_type(value, type):
+    if isinstance(value, u.Quantity):
         if value.unit.physical_type in u.get_physical_type(type.unit):
             pass
         else:
-            logging.error('must be in a units of {}.\nor will be assumed to be in units of photons per second.'.format(type))
+            logging.error(
+                "must be in a units of {}.\nor will be assumed to be in units of photons per second.".format(
+                    type
+                )
+            )
     else:
         value *= type
     return value
 
-def check_shape(value,shape):
-    if hasattr(value,'shape'):
+
+def check_shape(value, shape):
+    if hasattr(value, "shape"):
         if len(value.shape) == 0:
             return value * np.ones(shape)
         elif value.shape == shape:
@@ -59,8 +74,20 @@ def check_shape(value,shape):
 
 
 class Detector:
-    def __init__(self,stellar_model,resolution,loc,area,wave_grid,through_put=0.2,wave_padding=5*u.Angstrom,a=4,*args,**kwargs):
-        '''Detector model that simulates spectra from star given resolution...
+    def __init__(
+        self,
+        stellar_model,
+        resolution,
+        loc,
+        area,
+        wave_grid,
+        through_put=0.2,
+        wave_padding=5 * u.Angstrom,
+        a=4,
+        *args,
+        **kwargs,
+    ):
+        """Detector model that simulates spectra from star given resolution...
 
         Detector takes on a given theoretical `stellar_model`, `resolution`, with
         a constant signal to noise ratio, `snr`. Then call simulate to generate a given number
@@ -79,114 +106,143 @@ class Detector:
         Returns
         -------
         data: DetectorData type that contains all parameters generate
-        '''
+        """
         # Simulator Models
         self.stellar_model = stellar_model
         self.transmission_models = []
 
         # Lanczos Parameters
-        self.a       = a
+        self.a = a
 
         # Simulation Parameters
         self._lambmin = 0.0 * u.nm
         self._lambmax = 100000 * u.nm
 
         # Detector Properties
-        self.wave_grid    = wave_grid
+        self.wave_grid = wave_grid
         self.wave_padding = wave_padding
-        self.through_put  = through_put
+        self.through_put = through_put
         self.area = area
-        self.loc  = loc
+        self.loc = loc
         # LSF properties
-        self.sigma_range   = 3
-        self.resolution   = resolution
+        self.sigma_range = 3
+        self.resolution = resolution
         self.convolve_batch_size = 100_000
 
-        self.transmission_cutoff = 10.
+        self.transmission_cutoff = 10.0
 
-    def res(self,wavelength):
+    def res(self, wavelength):
         if isinstance(self._resolution, float):
-            return self._resolution 
-        elif hasattr(self._resolution, '__call__'):
+            return self._resolution
+        elif hasattr(self._resolution, "__call__"):
             return self._resolution(wavelength)
         else:
-            logging.error('resolution has not been set.')
+            logging.error("resolution has not been set.")
             return 0
 
     def resolution():
         doc = "The resolution property."
+
         def fset(self, value):
-            if isinstance(value,float):
+            if isinstance(value, float):
                 self._resolution = value
-            elif hasattr(value, '__call__'):
+            elif hasattr(value, "__call__"):
                 self._resolution = value
             else:
-                logging.error('resolution grid needs to be a single value \
-                                or a callable that takes wavelength as input')
+                logging.error(
+                    "resolution grid needs to be a single value \
+                                or a callable that takes wavelength as input"
+                )
+
         def fget(self):
             return self._resolution
 
         def fdel(self):
-            logging.warn('overwriting resolution')
+            logging.warn("overwriting resolution")
             del self._resolution
+
         return locals()
+
     resolution = property(**resolution())
 
     def lambmin():
         doc = "The lambmin property."
+
         def fget(self):
             return np.min(self.wave_grid) - self.wave_padding
+
         return locals()
+
     lambmin = property(**lambmin())
 
     def lambmax():
         doc = "The lambmax property."
+
         def fget(self):
             return np.max(self.wave_grid) + self.wave_padding
+
         return locals()
+
     lambmax = property(**lambmax())
 
     def wave_grid():
         doc = "The wave_grid property."
+
         def fget(self):
             return self._wave_grid
+
         def fset(self, new_grid):
             minimum = self.checkmin()
             maximum = self.checkmax()
             if minimum >= maximum:
-                logging.error('no overlap between selected wave grids\nmodel cannot be added')
+                logging.error(
+                    "no overlap between selected wave grids\nmodel cannot be added"
+                )
                 self.transmission_models.pop()
                 return
-            self._wave_grid = new_grid[np.multiply(new_grid <= maximum, new_grid >= minimum,dtype=bool)]
+            self._wave_grid = new_grid[
+                np.multiply(new_grid <= maximum, new_grid >= minimum, dtype=bool)
+            ]
             if np.min(new_grid) < minimum:
                 print("wave_grid min -> {}".format(minimum))
             if np.max(new_grid) > maximum:
                 print("wave_grid max -> {}".format(maximum))
+
         return locals()
+
     wave_grid = property(**wave_grid())
 
     def wave_difference():
         doc = "the wave_difference property"
+
         def fget(self):
             try:
                 return self._wave_difference
             except AttributeError:
                 diff = self.wave_grid[1:] - self.wave_grid[:-1]
-                return np.concatenate(([np.mean(diff)],diff))
-        def fset(self,value):
+                return np.concatenate(([np.mean(diff)], diff))
+
+        def fset(self, value):
             if isinstance(value, np.ndarray):
                 if value.shape == self.wave_grid.shape:
                     self._wave_difference = value
                 else:
-                    logging.error('difference array must have the same shape as wave grid {}.'.format(value.shape,self.wave_grid.shape))
+                    logging.error(
+                        "difference array must have the same shape as wave grid {}.".format(
+                            value.shape, self.wave_grid.shape
+                        )
+                    )
             else:
                 self._wave_difference = value * np.ones(self.wave_grid.shape)
+
         def fdel(self):
             self._wave_difference = None
+
         return locals()
+
     wave_difference = property(**wave_difference())
 
-    def add_model(self,model):
+    def add_model(self, model):
         self.transmission_models.append(model)
         # after adding model to list
         # reset the wave_grid so that it can be truncated
@@ -206,43 +262,45 @@ class Detector:
         # print(maximums)
         return min(maximums)
 
-    def simulate(self,obs_times,t_exp=[],snrs=[],wavelength_trigger=None,*args,**kwargs):
-        '''
-            The working function of the detector that creates the simulated data with the given
-            parameters previously set.
-            Parameters:
-            obs_times (np.ndarray) [astropy.time.Time] midtime of exposure,
-                used to determine star velocity for redshift
-            EITHER
-            t_exp (np.ndarray) [astropy.time.Time] length of time of exposure,
-                to determine the number of photons, and signal to noise ratios
-            OR
-            {
-            snrs (np.ndarray) [float] target snr of each epoch, the root of signal to noise function
-                is found with respect to time (self.trigger)
-            AND
-            wavelength_trigger: either a single wavelength or wavelength range to take
-                average over when finding length of exposure time
-            }
-        '''
-        if ((len(obs_times) == len(t_exp)) and (len(snrs) != 0)):
-            logging.error('cannot have both t_exp and snrs set, please choose one.')
+    def simulate(
+        self, obs_times, t_exp=[], snrs=[], wavelength_trigger=None, *args, **kwargs
+    ):
+        """
+        The working function of the detector that creates the simulated data with the given
+        parameters previously set.
+        Parameters:
+        obs_times (np.ndarray) [astropy.time.Time] midtime of exposure,
+            used to determine star velocity for redshift
+        EITHER
+        t_exp (np.ndarray) [astropy.time.Time] length of time of exposure,
+            to determine the number of photons, and signal to noise ratios
+        OR
+        {
+        snrs (np.ndarray) [float] target snr of each epoch, the root of signal to noise function
+            is found with respect to time (self.trigger)
+        AND
+        wavelength_trigger: either a single wavelength or wavelength range to take
+            average over when finding length of exposure time
+        }
+        """
+        if (len(obs_times) == len(t_exp)) and (len(snrs) != 0):
+            logging.error("cannot have both t_exp and snrs set, please choose one.")
             sys.exit()
-        if ((len(obs_times) == len(snrs)) and (len(t_exp) != 0)):
-            logging.error('cannot have both t_exp and snrs set, please choose one.')
+        if (len(obs_times) == len(snrs)) and (len(t_exp) != 0):
+            logging.error("cannot have both t_exp and snrs set, please choose one.")
             sys.exit()
         if not ((len(obs_times) == len(snrs)) or (len(obs_times) == len(t_exp))):
-            logging.error('obs_times must be the same length as either t_exp or snrs.')
+            logging.error("obs_times must be the same length as either t_exp or snrs.")
             sys.exit()
 
         if len(self.wave_grid) == 0:
-            print('wave_grid is empty')
+            print("wave_grid is empty")
             sys.exit()
         data = DetectorData()
-        data['data'] = {}
-        data['data']['obs_times'] = obs_times
+        data["data"] = {}
+        data["data"]["obs_times"] = obs_times
 
-        data['data']['epoches']   = obs_times.shape[0]
+        data["data"]["epoches"] = obs_times.shape[0]
         epoches = obs_times.shape[0]
 
         if snrs is not None:
@@ -250,33 +308,38 @@ class Detector:
                 wavelength_trigger = self.wave_grid
                 # wavelength_trigger = (self.wave_grid[0] + self.wave_grid[-1])/2
 
-            if not hasattr(snrs,'__iter__'):
+            if not hasattr(snrs, "__iter__"):
                 snrs = snrs * np.ones(epoches)
-            data['data']['snrs'] = snrs
-            data['data']['wavelength_trigger'] = wavelength_trigger
+            data["data"]["snrs"] = snrs
+            data["data"]["wavelength_trigger"] = wavelength_trigger
 
         # Generate Stellar Spectra
         ###################################################
-        data['theory'] = {}
-        data['theory']['star'] = {}
-        rvs = self.stellar_model.get_velocity(self,at.Time(obs_times))
+        data["theory"] = {}
+        data["theory"]["star"] = {}
+        rvs = self.stellar_model.get_velocity(self, at.Time(obs_times))
         deltas = simulacra.star.shifts(rvs)
-        flux_stellar, wave_stellar = self.stellar_model.get_spectra(self,obs_times)
+        flux_stellar, wave_stellar = self.stellar_model.get_spectra(self, obs_times)
 
-        data['data']['rvs'], data['theory']['star']['deltas'] = rvs, deltas
+        data["data"]["rvs"], data["theory"]["star"]["deltas"] = rvs, deltas
         # data['theory']['star']['flux'], data['theory']['star']['wave'] = flux_stellar, wave_stellar
         differences = [np.min(np.diff(np.log(wave_stellar.to(u.Angstrom).value)))]
 
         # Generate Transmission
         ###################################################
-        print('generating spectra...')
+        print("generating spectra...")
         trans_flux, trans_wave = [], []
         for model in self.transmission_models:
             # data['theory']['interpolated'][model._name] = {}
-            
-            flux, wave = model.generate_transmission(self.stellar_model,self,obs_times)
+
+            flux, wave = model.generate_transmission(
+                self.stellar_model, self, obs_times
+            )
             trans_flux.append(flux), trans_wave.append(wave)
-            differences += [np.min(np.diff(np.log(wave[iii][:].to(u.Angstrom).value))) for iii in range(len(wave))]
+            differences += [
+                np.min(np.diff(np.log(wave[iii][:].to(u.Angstrom).value)))
+                for iii in range(len(wave))
+            ]
             # data['theory'][model._name]['flux'],data['theory'][model._name]['wave'] = flux, wave
             print(model, differences)
         new_step_size = min(differences)
@@ -285,146 +348,181 @@ class Detector:
         # PARALLELIZE
         ##################################################################
         # data['theory']['interpolated']['star'] = {}
-        xs = np.arange(np.log(self.lambmin.to(u.Angstrom).value),np.log(self.lambmax.to(u.Angstrom).value),step=new_step_size)
-        print('interpolating spline...')
-        stellar_arr = np.empty((epoches,xs.shape[0]))
-        trans_arrs  = np.empty((len(self.transmission_models),epoches,xs.shape[0]))
+        xs = np.arange(
+            np.log(self.lambmin.to(u.Angstrom).value),
+            np.log(self.lambmax.to(u.Angstrom).value),
+            step=new_step_size,
+        )
+        print("interpolating spline...")
+        stellar_arr = np.empty((epoches, xs.shape[0]))
+        trans_arrs = np.empty((len(self.transmission_models), epoches, xs.shape[0]))
 
-        stellar_arr = self.interpolate_grid(np.add.outer(deltas, xs),np.outer(np.ones(epoches),np.log(wave_stellar.to(u.Angstrom).value)),flux_stellar.to(u.erg/u.s/u.cm**3).value)
+        stellar_arr = self.interpolate_grid(
+            np.add.outer(deltas, xs),
+            np.outer(np.ones(epoches), np.log(wave_stellar.to(u.Angstrom).value)),
+            flux_stellar.to(u.erg / u.s / u.cm**3).value,
+        )
         for j, model in enumerate(self.transmission_models):
-            trans_arrs[j,:,:] = self.interpolate_grid(np.outer(np.ones(epoches),xs),[np.log(x.to(u.Angstrom).value) for x in trans_wave[j][:]],trans_flux[j])
+            trans_arrs[j, :, :] = self.interpolate_grid(
+                np.outer(np.ones(epoches), xs),
+                [np.log(x.to(u.Angstrom).value) for x in trans_wave[j][:]],
+                trans_flux[j],
+            )
 
-        print('combining grids...')
-        data['theory']['star']['flux'] = np.array(stellar_arr)
-        fs        = stellar_arr.copy()
+        print("combining grids...")
+        data["theory"]["star"]["flux"] = np.array(stellar_arr)
+        fs = stellar_arr.copy()
         flux_unit = flux_stellar.unit
-        mask_the  = np.zeros(fs.shape,dtype=bool)
-        data['theory']['total'] = {}
-        for j,model in enumerate(self.transmission_models):
-            data['theory'][model._name] = {}
+        mask_the = np.zeros(fs.shape, dtype=bool)
+        data["theory"]["total"] = {}
+        for j, model in enumerate(self.transmission_models):
+            data["theory"][model._name] = {}
             # print("fs: ", fs.shape)
-            fs *= trans_arrs[j,:,:]
-            mask_the = (trans_arrs[j,:,:] > self.transmission_cutoff) | mask_the
-            data['theory'][model._name]['flux'] = trans_arrs[j,:,:]
-        data['theory']['total'] = {}
-        data['theory']['total']['flux'] = np.array(fs)
-        data['theory']['total']['wave'] = np.exp(xs) * u.Angstrom
-        data['theory']['total']['mask'] = np.array(mask_the)
+            fs *= trans_arrs[j, :, :]
+            mask_the = (trans_arrs[j, :, :] > self.transmission_cutoff) | mask_the
+            data["theory"][model._name]["flux"] = trans_arrs[j, :, :]
+        data["theory"]["total"] = {}
+        data["theory"]["total"]["flux"] = np.array(fs)
+        data["theory"]["total"]["wave"] = np.exp(xs) * u.Angstrom
+        data["theory"]["total"]["mask"] = np.array(mask_the)
 
         # Convolving using Hermite Coeffs
         #################################################
         # should be an array that can vary over pixel j or hermite m
-        print('convolving...')
-        f_lsf = self.convolve(xs,fs,self.res,new_step_size)
+        print("convolving...")
+        f_lsf = self.convolve(xs, fs, self.res, new_step_size)
 
-        data['theory']['lsf'] = {}
-        data['theory']['lsf']['flux'] = np.array(f_lsf)
+        data["theory"]["lsf"] = {}
+        data["theory"]["lsf"]["flux"] = np.array(f_lsf)
 
         # Generate transform wavelength grid using jitter & stretch
         ##################################################
-        x                    = np.log(self.wave_grid.to(u.Angstrom).value)#np.arange(self.xmin,self.xmax,step=res_step_size)
-        x_hat, wt_parameters = self.wave_transform(x,epoches)
+        x = np.log(
+            self.wave_grid.to(u.Angstrom).value
+        )  # np.arange(self.xmin,self.xmax,step=res_step_size)
+        x_hat, wt_parameters = self.wave_transform(x, epoches)
 
-        data['parameters'] = {}
-        data['parameters']['wavetransform'] = wt_parameters
+        data["parameters"] = {}
+        data["parameters"]["wavetransform"] = wt_parameters
 
-        print('xs: {} {}\nxhat: {} {}'.format(np.exp(np.min(xs)),np.exp(np.max(xs)),np.exp(np.min(x_hat)),np.exp(np.max(x_hat))))
-        data_mask = interpolate_mask(xs,mask_the,x_hat)
-        data['data']['mask'] = np.array(data_mask)
+        print(
+            "xs: {} {}\nxhat: {} {}".format(
+                np.exp(np.min(xs)),
+                np.exp(np.max(xs)),
+                np.exp(np.min(x_hat)),
+                np.exp(np.max(x_hat)),
+            )
+        )
+        data_mask = interpolate_mask(xs, mask_the, x_hat)
+        data["data"]["mask"] = np.array(data_mask)
 
         # Interpolate using Lanczos and Add Noise
         ##################################################
-        print('interpolating data...')
-        f_exp = self.interpolate_data(x_hat,xs,f_lsf,new_step_size)
+        print("interpolating data...")
+        f_exp = self.interpolate_data(x_hat, xs, f_lsf, new_step_size)
 
         P_exp = self.energy_to_photon_pow(f_exp * flux_unit)
         w_hat = np.exp(x_hat) * u.Angstrom
 
         snrs = np.array(snrs)
-        print('snrs: ', snrs,t_exp)
+        print("snrs: ", snrs, t_exp)
         if len(t_exp) == 0:
-            print('check')
+            print("check")
             t_exp = np.zeros(snrs.shape) * u.min
-            if hasattr(wavelength_trigger,'__iter__'):
+            if hasattr(wavelength_trigger, "__iter__"):
 
-                for i,snr in enumerate(snrs):
-                    inds_1 = (w_hat[i,:] < np.max(wavelength_trigger))
-                    inds_2 = (w_hat[i,:] > np.min(wavelength_trigger))
-                    inds   = (inds_1 * inds_2).astype(bool)
-                    t_exp[i] = self.trigger(P_exp[i,inds],snrs[i],w_hat[i,inds])
+                for i, snr in enumerate(snrs):
+                    inds_1 = w_hat[i, :] < np.max(wavelength_trigger)
+                    inds_2 = w_hat[i, :] > np.min(wavelength_trigger)
+                    inds = (inds_1 * inds_2).astype(bool)
+                    t_exp[i] = self.trigger(P_exp[i, inds], snrs[i], w_hat[i, inds])
             else:
                 wt_index = np.abs(w_hat - wavelength_trigger).argmin()
-                for i,snr in enumerate(snrs):
-                    t_exp[i] = self.trigger([P_exp[i,wt_index]],snrs[i],[w_hat[i,wt_index]])
-        data['data']['t_exp'] = t_exp
+                for i, snr in enumerate(snrs):
+                    t_exp[i] = self.trigger(
+                        [P_exp[i, wt_index]], snrs[i], [w_hat[i, wt_index]]
+                    )
+        data["data"]["t_exp"] = t_exp
 
-        n_exp = t_exp[:,None] * P_exp
-        true_err_grid = jax.vmap(self.noise_model,in_axes=[0,0,0])(n_exp,w_hat,t_exp)
+        n_exp = t_exp[:, None] * P_exp
+        true_err_grid = jax.vmap(self.noise_model, in_axes=[0, 0, 0])(
+            n_exp, w_hat, t_exp
+        )
 
         # print('generating true signal to noise ratios...')
-        print('adding noise...')
-        n_readout = self.add_noise(n_exp,true_err_grid)
+        print("adding noise...")
+        n_readout = self.add_noise(n_exp, true_err_grid)
 
         # data['parameters']['true_snr'] = np.array(f_exp/true_err_grid)
-        data['data']['flux_expected'] = np.array(n_exp)
-        data['data']['flux'] = np.array(n_readout)
+        data["data"]["flux_expected"] = np.array(n_exp)
+        data["data"]["flux"] = np.array(n_readout)
 
-        data['data']['mask'] += (n_readout <= 0.0)
-        data['data']['mask'] = data['data']['mask'].astype(bool)
-        data['data']['wave'] = self.wave_grid
+        data["data"]["mask"] += n_readout <= 0.0
+        data["data"]["mask"] = data["data"]["mask"].astype(bool)
+        data["data"]["wave"] = self.wave_grid
 
         # Get Error Bars
         ###################################################
-        print('generating errors...')
-        nerr_out = jax.vmap(self.noise_model,in_axes=[0,0,0])(n_readout,w_hat,t_exp)
-        print('t_exp: {}\nsnr: {}'.format(np.mean(t_exp),np.mean(n_readout/nerr_out)))
-        data['data']['ferr'] = np.array(nerr_out)
+        print("generating errors...")
+        nerr_out = jax.vmap(self.noise_model, in_axes=[0, 0, 0])(
+            n_readout, w_hat, t_exp
+        )
+        print(
+            "t_exp: {}\nsnr: {}".format(np.mean(t_exp), np.mean(n_readout / nerr_out))
+        )
+        data["data"]["ferr"] = np.array(nerr_out)
 
         # Pack Parameters into Dictionary
         ###################################################
-        data['parameters']['star'] = {}
-        data['parameters']['star'] = dict_of_attr(data['parameters']['star'],self.stellar_model)
+        data["parameters"]["star"] = {}
+        data["parameters"]["star"] = dict_of_attr(
+            data["parameters"]["star"], self.stellar_model
+        )
 
-        data['parameters']['detector'] = {}
-        data['parameters']['detector'] = dict_of_attr(data['parameters']['detector'],self)
+        data["parameters"]["detector"] = {}
+        data["parameters"]["detector"] = dict_of_attr(
+            data["parameters"]["detector"], self
+        )
 
         for model in self.transmission_models:
-            data['parameters'][model._name] = {}
-            data['parameters'][model._name] = dict_of_attr(data['parameters'][model._name],model)
-        print('done.')
+            data["parameters"][model._name] = {}
+            data["parameters"][model._name] = dict_of_attr(
+                data["parameters"][model._name], model
+            )
+        print("done.")
         return data
 
-    def kernel(self,x,sigma,xss):
-        '''
-            Gaussian function that is used to convolve the flux with the line spread function.
-            Parameters:
-            x: xss - x with in sigma_range*sigma
-            sigma: float standard deviation of the gaussian
-            xss: log wavelength value
-            Returns:
-            np.ndarray (m) gaussian kernel evaluated at xss
-        '''
-        return jnp.exp(-0.5 * (x/sigma)**2) / (sigma * np.sqrt(2 * np.pi))
+    def kernel(self, x, sigma, xss):
+        """
+        Gaussian function that is used to convolve the flux with the line spread function.
+        Parameters:
+        x: xss - x with in sigma_range*sigma
+        sigma: float standard deviation of the gaussian
+        xss: log wavelength value
+        Returns:
+        np.ndarray (m) gaussian kernel evaluated at xss
+        """
+        return jnp.exp(-0.5 * (x / sigma) ** 2) / (sigma * np.sqrt(2 * np.pi))
 
-    def convolve(self,xs,fs,res,dx):
-        '''
-            Convolves the total flux with the line spread function, called at .simulate
+    def convolve(self, xs, fs, res, dx):
+        """
+        Convolves the total flux with the line spread function, called at .simulate
+        Parameters:
+        xs: np.ndarray (m) log wavelength array
+        fs: np.ndarray (n,m) flux array
+        res: res __call__ at log wavelength returns instrument resolution must vectorize with jnp
+        dx: the xs spacing
+        Returns:
+        f_lsf: np.ndarray (n,m) convolved flux array
+        """
+
+        def convolve_epochs(xs, fs):
+            """
+            Convolve the flux with the line spread function across epochs.
             Parameters:
             xs: np.ndarray (m) log wavelength array
             fs: np.ndarray (n,m) flux array
-            res: res __call__ at log wavelength returns instrument resolution must vectorize with jnp
-            dx: the xs spacing
-            Returns:
-            f_lsf: np.ndarray (n,m) convolved flux array
-        '''        
-        
-        def convolve_epochs(xs,fs):
-            '''
-                Convolve the flux with the line spread function across epochs.
-                Parameters:
-                xs: np.ndarray (m) log wavelength array
-                fs: np.ndarray (n,m) flux array
-            '''
+            """
             f_out = jnp.zeros(xs.shape)
             # x_tilde = (xs[None,:] - xs[:,None])
             size = fs.shape[0]
@@ -432,220 +530,273 @@ class Detector:
             # convolving with changing resolution size
             # convolve using both parallel and serial computing using
             # a for loop and vmap, each series create convolving
-            print("batches {}".format(size//batch_size + 1))
-            for kk in range(size//batch_size + 1):
-                top = np.min(((kk+1)*batch_size,size))
-                batch_slice = np.arange((kk*batch_size),top,1)
-                
-                sigmas = jnp.vectorize(lambda x: simulacra.star.delta_x(res(x)))(xs[batch_slice])
-                
-                size_1 = 2*int((max(sigmas)*self.sigma_range)/dx) + 1
-                print(max(sigmas)/dx,dx,max(sigmas))
+            print("batches {}".format(size // batch_size + 1))
+            for kk in range(size // batch_size + 1):
+                top = np.min(((kk + 1) * batch_size, size))
+                batch_slice = np.arange((kk * batch_size), top, 1)
+
+                sigmas = jnp.vectorize(lambda x: simulacra.star.delta_x(res(x)))(
+                    xs[batch_slice]
+                )
+
+                size_1 = 2 * int((max(sigmas) * self.sigma_range) / dx) + 1
+                print(max(sigmas) / dx, dx, max(sigmas))
                 print("building convolving matrix...")
-                indices = batch_slice[None,:] + np.arange(-size_1//2,size_1//2,1,dtype=int)[:,None]
-                indices[indices > (size-1)] = size-1
+                indices = (
+                    batch_slice[None, :]
+                    + np.arange(-size_1 // 2, size_1 // 2, 1, dtype=int)[:, None]
+                )
+                indices[indices > (size - 1)] = size - 1
                 indices[indices < 0] = 0
                 f_temp = fs[indices]
                 x_temp = xs[indices]
-                
-                
+
                 print("batch {}".format(kk))
-                def func(xss,x_temp,f_temp,sigma):
+
+                def func(xss, x_temp, f_temp, sigma):
                     x_tilde = xss - x_temp
-                    kern = self.kernel(x_tilde,sigma,xss)
-                    return jnp.dot(f_temp,kern)/np.sum(kern)
-                
-                f_out = f_out.at[batch_slice].set(jax.vmap(func,in_axes=(0,1,1,0))(xs[batch_slice],x_temp,f_temp,sigmas))
+                    kern = self.kernel(x_tilde, sigma, xss)
+                    return jnp.dot(f_temp, kern) / np.sum(kern)
+
+                f_out = f_out.at[batch_slice].set(
+                    jax.vmap(func, in_axes=(0, 1, 1, 0))(
+                        xs[batch_slice], x_temp, f_temp, sigmas
+                    )
+                )
 
             return f_out
-        f_lsf = jax.vmap(convolve_epochs,in_axes=(None,0))(xs,fs)
+
+        f_lsf = jax.vmap(convolve_epochs, in_axes=(None, 0))(xs, fs)
         return f_lsf
 
-    def interpolate_grid(self,xs,x,f):
-        '''
-            This function takes in the new grid xs and the x and flux arrays output
-            by the TheoryModels then interpolates them. If you want to write in
-            your own interpolation. Just note that all values coming in are 2d.
-            sometimes the first layer is a list because the TheoryModel spit out
-            different shapes of flux depending on internal parameters.
+    def interpolate_grid(self, xs, x, f):
+        """
+        This function takes in the new grid xs and the x and flux arrays output
+        by the TheoryModels then interpolates them. If you want to write in
+        your own interpolation. Just note that all values coming in are 2d.
+        sometimes the first layer is a list because the TheoryModel spit out
+        different shapes of flux depending on internal parameters.
 
-            Parameters:
-            xs: new grid to interpolate to. 2D ij. i: epoch dimension, j: pixel dimension
-        '''
+        Parameters:
+        xs: new grid to interpolate to. 2D ij. i: epoch dimension, j: pixel dimension
+        """
         fs = np.zeros(xs.shape)
         for i in range(len(x)):
-            fs[i,:] = interp.CubicSpline(x[i],f[i])(xs[i,:])
+            fs[i, :] = interp.CubicSpline(x[i], f[i])(xs[i, :])
         return fs
 
-    def interpolate_data(self,xs,x,f,dx):
-        '''
-            Interpolation function that interpolates observing wavelengths onto
-            the theoretical flux. Here I use Lanczos interpolation. Defined in lanczos.py.
-        '''
-        f_exp = jax.vmap(jnp.interp, in_axes=(0,None,0))(xs,x,f)
+    def interpolate_data(self, xs, x, f, dx):
+        """
+        Interpolation function that interpolates observing wavelengths onto
+        the theoretical flux. Here I use Lanczos interpolation. Defined in lanczos.py.
+        """
+        f_exp = jax.vmap(jnp.interp, in_axes=(0, None, 0))(xs, x, f)
         # f_exp = jax.vmap(simulacra.lanczos.lanczos_interpolation, in_axes=(0,None,0,None,None))(xs,x,f,dx,self.a)
         return f_exp
 
-    def wave_transform(self,x,epoches,*arg):
-        '''
-            Wave transformation in detector. Called in .simulate
-        '''
-        return np.repeat(x[np.newaxis,:],repeats=epoches,axis=0), None
+    def wave_transform(self, x, epoches, *arg):
+        """
+        Wave transformation in detector. Called in .simulate
+        """
+        return np.repeat(x[np.newaxis, :], repeats=epoches, axis=0), None
 
-    def trigger(self,P,snr,wavelength):
-        '''
-            Triggers the detector to stop exposure at a given SNR limit. Only called
-            in .simulate if snrs are given not t_exp
-        '''
-        def func(t,powers,waves):
-            
+    def trigger(self, P, snr, wavelength):
+        """
+        Triggers the detector to stop exposure at a given SNR limit. Only called
+        in .simulate if snrs are given not t_exp
+        """
+
+        def func(t, powers, waves):
+
             out = powers * t / self.noise_model(t * powers, waves, t)
-            return jnp.nanmean((out - snr)**2)
-        
-        print('optimizing exposure time for snr: {}'.format(snr), P.unit)        
-        res = scipy.optimize.minimize(func, 0.5, args=(P.to(1/u.min).value,wavelength),\
-                                      method='SLSQP',options={'gtol':1e-3},jac='3-point',bounds=[[0.0,np.inf]])
+            return jnp.nanmean((out - snr) ** 2)
+
+        print("optimizing exposure time for snr: {}".format(snr), P.unit)
+        res = scipy.optimize.minimize(
+            func,
+            0.5,
+            args=(P.to(1 / u.min).value, wavelength),
+            method="SLSQP",
+            options={"gtol": 1e-3},
+            jac="3-point",
+            bounds=[[0.0, np.inf]],
+        )
         print(res)
         return res.x[0] * u.min
 
-    def noise_model(self,N_shots,wavelength,t_exp,*args):
-        '''
-            Calculate signal to noise ratio.
-        '''
-        
+    def noise_model(self, N_shots, wavelength, t_exp, *args):
+        """
+        Calculate signal to noise ratio.
+        """
+
         return jnp.sqrt(N_shots)
 
     def add_noise(self, f, err):
-        '''
-            Add noise to the flux based on the signal to noise ratio. Vectorized by JAX.
-            Parameters:
-            f (np.ndarray) [float] flux array
-            snr (np.ndarray) [float] signal to noise ratio
-        '''
+        """
+        Add noise to the flux based on the signal to noise ratio. Vectorized by JAX.
+        Parameters:
+        f (np.ndarray) [float] flux array
+        snr (np.ndarray) [float] signal to noise ratio
+        """
 
-        return f + jax.random.normal(PRNG_KEY,shape=f.shape,dtype=f.dtype)*err
-    
-    def generate_errors(self,f,snr):
-        '''
-            Generate errors based on the flux and signal to noise ratio.
-            Parameters:
-            f (np.ndarray) [float] flux array
-            snr (np.ndarray) [float] signal to noise ratio
-        '''
-        
+        return f + jax.random.normal(PRNG_KEY, shape=f.shape, dtype=f.dtype) * err
+
+    def generate_errors(self, f, snr):
+        """
+        Generate errors based on the flux and signal to noise ratio.
+        Parameters:
+        f (np.ndarray) [float] flux array
+        snr (np.ndarray) [float] signal to noise ratio
+        """
+
         return f / snr
 
-    def energy_to_photon_pow(self,flux,*args):
-        '''
-            convert energy incoming to detector to photons per minute
-        '''
-        P = self.through_put * (self.area/(const.hbar * const.c) * \
-            np.einsum('ij,j,j->ij', flux, self.wave_difference, self.wave_grid)).to(1/u.min)
+    def energy_to_photon_pow(self, flux, *args):
+        """
+        convert energy incoming to detector to photons per minute
+        """
+        P = self.through_put * (
+            self.area
+            / (const.hbar * const.c)
+            * np.einsum("ij,j,j->ij", flux, self.wave_difference, self.wave_grid)
+        ).to(1 / u.min)
         return P
 
 
 class NoisyDetector(Detector):
-    def __init__(self,dark_current,read_noise,ccd_eff,**kwargs):
-        super(self,NoisyDetector).__init__(kwargs)
+    def __init__(self, dark_current, read_noise, ccd_eff, **kwargs):
+        super(self, NoisyDetector).__init__(kwargs)
         self.dark_current = dark_current
         self.read_noise = read_noise
         self.ccd_eff = ccd_eff
 
-    def shots(self,t_exp,P,wavelength):
+    def shots(self, t_exp, P, wavelength):
         return t_exp * P * self.ccd_eff(wavelength)
 
-    def noise_source(self,t_exp,P,wavelength):
+    def noise_source(self, t_exp, P, wavelength):
         return self.read_noise(wavelength) + self.dark_current(wavelength) * t_exp
 
     def ccd_eff():
         doc = "The ccd_eff property."
+
         def fget(self):
             return self._ccd_eff
+
         def fset(self, value):
-            if hasattr(value,'__call__'):
+            if hasattr(value, "__call__"):
                 self._ccd_eff = value
+
         def fdel(self):
             del self._ccd_eff
+
         return locals()
+
     ccd_eff = property(**ccd_eff())
 
     def dark_current():
         doc = "The dark_current property."
+
         def fget(self):
             return self._dark_current
+
         def fset(self, value):
-            if hasattr(value,'__call__'):
+            if hasattr(value, "__call__"):
                 self._dark_current = value
+
         def fdel(self):
             del self._dark_current
+
         return locals()
+
     dark_current = property(**dark_current())
 
     def read_noise():
         doc = "The read_noise property."
+
         def fget(self):
 
             return self._read_noise
+
         def fset(self, value):
 
-            if hasattr(value,'__call__'):
+            if hasattr(value, "__call__"):
                 self._read_noise = value
+
         def fdel(self):
             del self._read_noise
+
         return locals()
+
     read_noise = property(**read_noise())
 
-class LinearTransformDetector(Detector):
-    def __init__(self,w,epsilon,**kwargs):
-        super(self,LinearTransformDetector).__init__(kwargs)
-        self.epsilon = epsilon
-        self.w       = w
 
-    def wave_transform(self,x):
+class LinearTransformDetector(Detector):
+    def __init__(self, w, epsilon, **kwargs):
+        super(self, LinearTransformDetector).__init__(kwargs)
+        self.epsilon = epsilon
+        self.w = w
+
+    def wave_transform(self, x):
         epoches = xs.shape[0]
-        parameters = {'m': np.random.uniform(1-epsilon,1+epsilon,epoches), 'delt': np.random.uniform(0,w,epoches)}
-        width = average_difference(out[0,:]) * w
+        parameters = {
+            "m": np.random.uniform(1 - epsilon, 1 + epsilon, epoches),
+            "delt": np.random.uniform(0, w, epoches),
+        }
+        width = average_difference(out[0, :]) * w
         return x
 
 
 class JaxDetector(Detector):
     import scipy.sparse
-    def convolve(self,xs,fs,dx):
+
+    def convolve(self, xs, fs, dx):
         pass
         # nevermind
 
-def even_wave_grid(wave_min,wave_max,resolution):
-    delta_x = simulacra.star.delta_x(4*resolution)
-    x_grid = np.arange(np.log(wave_min.to(u.Angstrom).value),np.log(wave_max.to(u.Angstrom).value),delta_x)
+
+def even_wave_grid(wave_min, wave_max, resolution):
+    delta_x = simulacra.star.delta_x(4 * resolution)
+    x_grid = np.arange(
+        np.log(wave_min.to(u.Angstrom).value),
+        np.log(wave_max.to(u.Angstrom).value),
+        delta_x,
+    )
     wave_grid = np.exp(x_grid) * u.Angstrom
     return wave_grid
 
-apogee_dict = {'resolution':22_500.0,
-            'area': np.pi * (2.5*u.m/2)**2,
-            'dark_current': 100/u.s,
-            'read_noise': 100,
-            'ccd_eff':0.99,
-            'through_put':0.05,
-            'wave_grid':even_wave_grid(1.51*u.um,1.70*u.um,22_500.0),
-            'loc':coord.EarthLocation.of_site('APO')}
 
-keck_dict = {'resolution':100_000.0,
-            'area': np.pi * (10*u.m/2)**2,
-            'dark_current': 100/u.s,
-            'read_noise': 100,
-            'ccd_eff':0.99,
-            'through_put':0.05,
-            'wave_grid':even_wave_grid(500*u.nm,630*u.nm,100_000.0),
-            'loc':coord.EarthLocation.of_site('Keck Observatory')}
+apogee_dict = {
+    "resolution": 22_500.0,
+    "area": np.pi * (2.5 * u.m / 2) ** 2,
+    "dark_current": 100 / u.s,
+    "read_noise": 100,
+    "ccd_eff": 0.99,
+    "through_put": 0.05,
+    "wave_grid": even_wave_grid(1.51 * u.um, 1.70 * u.um, 22_500.0),
+    "loc": coord.EarthLocation.of_site("APO"),
+}
 
-expres_dict = {'resolution':130_000.0,
-            'area': np.pi * (4.3*u.m/2)**2,
-            'dark_current': 100/u.s,
-            'read_noise': 100,
-            'ccd_eff':0.99,
-            'through_put':0.05,
-            'wave_grid':even_wave_grid(700*u.nm,950*u.nm,130_000.0),
-            'loc':coord.EarthLocation.of_site('Lowell Observatory')}
+keck_dict = {
+    "resolution": 100_000.0,
+    "area": np.pi * (10 * u.m / 2) ** 2,
+    "dark_current": 100 / u.s,
+    "read_noise": 100,
+    "ccd_eff": 0.99,
+    "through_put": 0.05,
+    "wave_grid": even_wave_grid(500 * u.nm, 630 * u.nm, 100_000.0),
+    "loc": coord.EarthLocation.of_site("Keck Observatory"),
+}
+
+expres_dict = {
+    "resolution": 130_000.0,
+    "area": np.pi * (4.3 * u.m / 2) ** 2,
+    "dark_current": 100 / u.s,
+    "read_noise": 100,
+    "ccd_eff": 0.99,
+    "through_put": 0.05,
+    "wave_grid": even_wave_grid(700 * u.nm, 950 * u.nm, 130_000.0),
+    "loc": coord.EarthLocation.of_site("Lowell Observatory"),
+}
 
 # apogee_det = Detector(**apogee_dict)
 # apogee_det.add_model(simulacra.tellurics.TelFitModel(loc=apogee_det.loc,lambmin=apogee_det.lambmin,lambmax=apogee_det.lambmax))

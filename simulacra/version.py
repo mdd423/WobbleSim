@@ -3,6 +3,7 @@
 # version, so we catch the generic 'Exception'.
 try:
     from setuptools_scm import get_version
-    version = get_version(root='..', relative_to=__file__)
+
+    version = get_version(root="..", relative_to=__file__)
 except Exception:
-    version = '0.5.dev1+gb3eb85b.d20211103'
+    version = "0.5.dev1+gb3eb85b.d20211103"

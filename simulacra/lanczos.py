@@ -18,21 +18,32 @@ import jax.numpy as jnp
 #             y[i] += ys[sample] * lanczos_kernel((x_value - xs[sample])/dx,a)
 #     return y
 
-@partial(jnp.vectorize,excluded=(1,))
-def lanczos_kernel(x,a):
-    return jnp.where(x == 0, 1, \
-                     jnp.where((x >= -a) & (x <= a), \
-                               a * jnp.sin(jnp.pi * x) * jnp.sin(jnp.pi * x / a) / (jnp.pi**2 * x**2), 0.0))
 
-def lanczos_matrix(x,xs,dx,a=4):
-    return jnp.where(((x[None,:] - xs[:,None])/dx < a)*((x[None,:] - xs[:,None])/dx > -a),\
-                     lanczos_kernel((x[None,:] - xs[:,None])/dx,a),0.0)
+@partial(jnp.vectorize, excluded=(1,))
+def lanczos_kernel(x, a):
+    return jnp.where(
+        x == 0,
+        1,
+        jnp.where(
+            (x >= -a) & (x <= a),
+            a * jnp.sin(jnp.pi * x) * jnp.sin(jnp.pi * x / a) / (jnp.pi**2 * x**2),
+            0.0,
+        ),
+    )
 
-def lanczos_interpolation(x,xs,ys,dx,a=4):
-    print('creating lanczos matrix')
-    M = lanczos_matrix(xs,xs,dx,a)
-    print('solving lanczos matrix')
+
+def lanczos_matrix(x, xs, dx, a=4):
+    return jnp.where(
+        ((x[None, :] - xs[:, None]) / dx < a) * ((x[None, :] - xs[:, None]) / dx > -a),
+        lanczos_kernel((x[None, :] - xs[:, None]) / dx, a),
+        0.0,
+    )
+
+
+def lanczos_interpolation(x, xs, ys, dx, a=4):
+    print("creating lanczos matrix")
+    M = lanczos_matrix(xs, xs, dx, a)
+    print("solving lanczos matrix")
     theta = jnp.linalg.solve(M, ys)
-    print('interpolating lanczos')
+    print("interpolating lanczos")
     return theta @ lanczos_matrix(x, xs, dx, a)
-

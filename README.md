@@ -3,13 +3,10 @@ Simulator for data from spectrographs.
 
 
 ## Installation
-To install, either clone the dev github directory. Then install.  
+To install, clone the github directory. Then install using pip.  
 `git clone https://github.com/mdd423/WobbleSim.git`  
 `cd WobbleSim`  
 `pip install .`  
-
-Or install with pip for the latest stable version.  
-`pip install simulacra-spectra`  
 
 ## Quick Use
 To quickly use, either check out the notebook folder for example problems.  

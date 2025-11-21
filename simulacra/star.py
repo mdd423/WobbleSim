@@ -325,8 +325,11 @@ class PhoenixModel(TheoryModel):
                 np.mean(self.surface_flux), np.median(self.surface_flux)
             )
         )
+        wave_grid_air = self.wave / specutils.utils.wcs_utils.refraction_index(
+            self.wave, method="Morton2000", co2=None
+        )
         obs_flux = self.surface_flux * (self.stellar_radius**2 / self.distance**2).to(1)
-        obs_photon = self.energy_to_photon_pow(detector, obs_flux)
+        obs_photon = self.energy_to_photon_pow(detector, obs_flux, wave_grid_air)
         print(
             "obs     flux: mean {:3.2e}\t median {:3.2e}".format(
                 np.mean(obs_flux), np.median(obs_flux)
@@ -336,9 +339,7 @@ class PhoenixModel(TheoryModel):
         obs_photon = np.outer(np.ones(obs_times.shape), obs_photon)
         # obs_flux = stellar_to_detector_flux(self,detector,exp_times)
 
-        return obs_photon, self.wave / specutils.utils.wcs_utils.refraction_index(
-            self.wave, method="Morton2000", co2=None
-        )
+        return obs_photon, wave_grid_air
 
     def plot(self, ax, epoch_idx, normalize=None, nargs=[]):
         y = self.flux

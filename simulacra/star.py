@@ -312,7 +312,7 @@ class PhoenixModel(TheoryModel):
         P = detector.through_put * (
             detector.area
             / (const.hbar * const.c)
-            * np.einsum("ij,j,j->ij", flux,np.concatenate(wave_diff,[wave_diff[-1]]), wave_grid)
+            * np.einsum("ij,j,j->ij", flux,np.concatenate((wave_diff,[wave_diff[-1]])), wave_grid)
         ).to(1 / u.min)
         return P
 

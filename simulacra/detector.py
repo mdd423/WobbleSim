@@ -360,7 +360,7 @@ class Detector:
         stellar_arr = self.interpolate_grid(
             np.add.outer(deltas, xs),
             np.outer(np.ones(epoches), np.log(wave_stellar.to(u.Angstrom).value)),
-            flux_stellar.to(u.erg / u.s / u.cm**3).value,
+            flux_stellar.to(1/u.min).value,
         )
         for j, model in enumerate(self.transmission_models):
             trans_arrs[j, :, :] = self.interpolate_grid(
@@ -419,9 +419,8 @@ class Detector:
         # Interpolate using Lanczos and Add Noise
         ##################################################
         print("interpolating data...")
-        f_exp = self.interpolate_data(x_hat, xs, f_lsf, new_step_size)
+        P_exp = self.interpolate_data(x_hat, xs, f_lsf, new_step_size)
 
-        P_exp = f_exp #self.energy_to_photon_pow(f_exp * flux_unit)
         w_hat = np.exp(x_hat) * u.Angstrom
 
         snrs = np.array(snrs)

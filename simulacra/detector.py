@@ -419,7 +419,8 @@ class Detector:
         # Interpolate using Lanczos and Add Noise
         ##################################################
         print("interpolating data...")
-        P_exp = self.interpolate_data(x_hat, xs, f_lsf, new_step_size) * flux_unit
+        print(flux_unit)
+        P_exp = np.array(self.interpolate_data(x_hat, xs, f_lsf, new_step_size)) * flux_unit
 
         w_hat = np.exp(x_hat) * u.Angstrom
 

@@ -87,25 +87,26 @@ class Detector:
         *args,
         **kwargs,
     ):
-        """Detector model that simulates spectra from star given resolution...
-
-        Detector takes on a given theoretical `stellar_model`, `resolution`, with
-        a constant signal to noise ratio, `snr`. Then call simulate to generate a given number
-        of epoches of spectral data.
-
+        """
+        Base Detector Class
         Parameters
         ----------
-        stellar_model: TheoryModel with a generate_data method that returns flux, wave, and deltas
-        resolution: the resolution of the detector being simulated
-        epsilon: a small that is used to pull the random stretchs for the wavelength grid, m ~ uniform(1-epsilon,1+epsilon)
-        snr: the constant signal to noise ratio
-        gamma: a constant that random effects the errorbars of flux \sigma_f ~ normal(mu=0.0,sigma=gamma * f_i,j/snr_i,j)
-        w: a constant that random affects the jitter to the wavelength grid, del ~ uniform(-w*pxl_width, w*pxl_width)
-        a: the number of kernel functions used at the lanczos interpolation step
-
-        Returns
-        -------
-        data: DetectorData type that contains all parameters generate
+        stellar_model: simulacra.star.TheoryModel
+            The stellar model to use for the simulation.
+        resolution: float or callable
+            The resolution of the detector. If callable, must take wavelength as input.
+        loc: astropy.coordinates.EarthLocation
+            The location of the detector.
+        area: astropy.units.Quantity
+            The collecting area of the detector.
+        wave_grid: astropy.units.Quantity
+            The wavelength grid of the detector.
+        through_put: float
+            The throughput of the detector.
+        wave_padding: astropy.units.Quantity
+            The padding to add to the wavelength range.
+        a: int
+            The Lanczos parameter.
         """
         # Simulator Models
         self.stellar_model = stellar_model
@@ -266,22 +267,21 @@ class Detector:
         self, obs_times, t_exp=[], snrs=[], wavelength_trigger=None, *args, **kwargs
     ):
         """
-        The working function of the detector that creates the simulated data with the given
-        parameters previously set.
-        Parameters:
-        obs_times (np.ndarray) [astropy.time.Time] midtime of exposure,
-            used to determine star velocity for redshift
-        EITHER
-        t_exp (np.ndarray) [astropy.time.Time] length of time of exposure,
-            to determine the number of photons, and signal to noise ratios
-        OR
-        {
-        snrs (np.ndarray) [float] target snr of each epoch, the root of signal to noise function
-            is found with respect to time (self.trigger)
-        AND
-        wavelength_trigger: either a single wavelength or wavelength range to take
-            average over when finding length of exposure time
-        }
+        Simulates detector observations.
+        Parameters
+        ----------
+        obs_times: astropy.units.Quantity
+            The observation times.
+        t_exp: astropy.units.Quantity
+            The exposure times.
+        snrs: astropy.units.Quantity
+            The signal to noise ratios.
+        wavelength_trigger: astropy.units.Quantity
+            The wavelength to trigger the SNR calculation on.
+        Returns
+        -------
+        data: dict
+            The simulated data.
         """
         if (len(obs_times) == len(t_exp)) and (len(snrs) != 0):
             logging.error("cannot have both t_exp and snrs set, please choose one.")
@@ -421,7 +421,7 @@ class Detector:
         print("interpolating data...")
         f_exp = self.interpolate_data(x_hat, xs, f_lsf, new_step_size)
 
-        P_exp = self.energy_to_photon_pow(f_exp * flux_unit)
+        P_exp = f_exp #self.energy_to_photon_pow(f_exp * flux_unit)
         w_hat = np.exp(x_hat) * u.Angstrom
 
         snrs = np.array(snrs)
@@ -650,17 +650,6 @@ class Detector:
         """
 
         return f / snr
-
-    def energy_to_photon_pow(self, flux, *args):
-        """
-        convert energy incoming to detector to photons per minute
-        """
-        P = self.through_put * (
-            self.area
-            / (const.hbar * const.c)
-            * np.einsum("ij,j,j->ij", flux, self.wave_difference, self.wave_grid)
-        ).to(1 / u.min)
-        return P
 
 
 class NoisyDetector(Detector):

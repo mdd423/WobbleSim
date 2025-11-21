@@ -304,6 +304,18 @@ class PhoenixModel(TheoryModel):
         )
         return rvs
 
+    def energy_to_photon_pow(self, detector, flux, wave_grid,*args):
+        """
+        convert energy incoming to detector to photons per minute
+        """
+        wave_diff = np.diff(wave_grid)
+        P = detector.through_put * (
+            detector.area
+            / (const.hbar * const.c)
+            * np.einsum("ij,j,j->ij", flux,wave_diff.append(wave_diff[-1]), wave_grid)
+        ).to(1 / u.min)
+        return P
+
     def get_spectra(self, detector, obs_times):
         # add integral over transmission
         # time = atime.Time([obs_times[i] + exp_times[i]/2 for i in range(len(obs_times))])
@@ -314,18 +326,17 @@ class PhoenixModel(TheoryModel):
             )
         )
         obs_flux = self.surface_flux * (self.stellar_radius**2 / self.distance**2).to(1)
+        obs_photon = self.energy_to_photon_pow(detector, obs_flux)
         print(
             "obs     flux: mean {:3.2e}\t median {:3.2e}".format(
                 np.mean(obs_flux), np.median(obs_flux)
             )
         )
-        # axes.plot(self.wave,obs_flux,'or',alpha=0.3)
-        # # axes.set_xlim(6120,6130)
-        # plt.show()
-        obs_flux = np.outer(np.ones(obs_times.shape), obs_flux)
+        # this is where you enter stellar variability into the spectra
+        obs_photon = np.outer(np.ones(obs_times.shape), obs_photon)
         # obs_flux = stellar_to_detector_flux(self,detector,exp_times)
 
-        return obs_flux, self.wave / specutils.utils.wcs_utils.refraction_index(
+        return obs_photon, self.wave / specutils.utils.wcs_utils.refraction_index(
             self.wave, method="Morton2000", co2=None
         )
 

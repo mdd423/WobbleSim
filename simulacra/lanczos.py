@@ -4,23 +4,21 @@ from functools import partial
 import jax
 import jax.numpy as jnp
 
-# def lanczos_interpolation(x,xs,ys,dx,a=4):
-#     x0 = xs[0]
-#     y = np.zeros(x.shape)
-#     # v_lanczos = np.vectorize(lanczos_kernel)
-#     for i,x_value in enumerate(x):
-#         # which is basically the same as sample=x[j-a+1] to x[j+a]
-#         # where j in this case is the nearest index xs_j to x_value
-#         sample_min,sample_max = max(0,abs(x_value-x0)//dx - a + 1),min(xs.shape[0],abs(x_value-x0)//dx + a)
-#         samples = np.arange(sample_min,sample_max,dtype=int)
-#         # y[i]/ = v_lanczos((x_value - xs[samples])/dx,a).sum()
-#         for sample in samples:
-#             y[i] += ys[sample] * lanczos_kernel((x_value - xs[sample])/dx,a)
-#     return y
-
 
 @partial(jnp.vectorize, excluded=(1,))
 def lanczos_kernel(x, a):
+    '''Lanczos kernel function.
+    Parameters
+    ----------
+    x : float
+        The input value.
+    a : int
+        The Lanczos parameter.
+    Returns
+    -------
+    float
+        The value of the Lanczos kernel at x.
+    '''
     return jnp.where(
         x == 0,
         1,
@@ -33,6 +31,22 @@ def lanczos_kernel(x, a):
 
 
 def lanczos_matrix(x, xs, dx, a=4):
+    '''Constructs the Lanczos interpolation matrix.
+    Parameters 
+    ----------
+    x : array-like
+        The input values where the kernel is evaluated.
+    xs : array-like
+        The sample points.
+    dx : float
+        The spacing between sample points.
+    a : int
+        The Lanczos parameter.
+    Returns
+    -------
+    array-like
+        The Lanczos interpolation matrix.
+    '''
     return jnp.where(
         ((x[None, :] - xs[:, None]) / dx < a) * ((x[None, :] - xs[:, None]) / dx > -a),
         lanczos_kernel((x[None, :] - xs[:, None]) / dx, a),
@@ -41,6 +55,24 @@ def lanczos_matrix(x, xs, dx, a=4):
 
 
 def lanczos_interpolation(x, xs, ys, dx, a=4):
+    '''Performs Lanczos interpolation.
+    Parameters
+    ----------
+    x : array-like
+        The input values where interpolation is desired.
+    xs : array-like
+        The sample points.
+    ys : array-like
+        The sample values at the sample points.
+    dx : float
+        The spacing between sample points.
+    a : int
+        The Lanczos parameter.
+    Returns
+    -------
+    array-like
+        The interpolated values at x.
+    '''
     print("creating lanczos matrix")
     M = lanczos_matrix(xs, xs, dx, a)
     print("solving lanczos matrix")

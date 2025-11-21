@@ -9,6 +9,24 @@ import numpy as np
 
 
 class TelFitModel(TheoryModel):
+    '''Telluric absorption model using TelFit.
+    Parameters
+    ----------
+    loc : astropy.coordinates.EarthLocation
+        The location of the observatory.
+    lambmin : astropy.units.Quantity
+        The minimum wavelength of the model.
+    lambmax : astropy.units.Quantity
+        The maximum wavelength of the model.
+    humidity : float or array-like
+        The humidity value(s) for the model.
+    temperature : astropy.units.Quantity or array-like
+        The temperature value(s) for the model.
+    pressure : astropy.units.Quantity or array-like
+        The pressure value(s) for the model.
+    wave_padding : astropy.units.Quantity
+        The padding to add to the wavelength range.
+    '''
     def __init__(
         self,
         loc,
@@ -30,6 +48,7 @@ class TelFitModel(TheoryModel):
         self.temperature = temperature
         self.pressure = pressure
         self.humidity = humidity
+        self.airmass = None
 
         # dlamb = 1e-2 * u.Angstrom
         # self.wave = np.arange(lambmin.to(u.Angstrom).value,lambmax.to(u.Angstrom).value,step=dlamb.to(u.Angstrom).value) * u.Angstrom
@@ -167,13 +186,46 @@ class TelFitModel(TheoryModel):
 
     epoches = property(**epoches())
 
-    def airmass(self, star, detector, obs_times):
+    def get_airmass(self, star, detector, obs_times):
+        '''
+        Get the airmass for the observation times.
+        Parameters
+        ----------
+        star : Star object
+            The star being observed.
+        detector : Detector object
+            The detector being used.
+        obs_times : array-like
+            The observation times.
+        Returns
+        -------
+        secz : array-like
+            The airmass values for the observation times.
+        '''
         telescope_frame = coord.AltAz(obstime=obs_times, location=detector.loc)
         secz = np.array(star.target.transform_to(telescope_frame).secz)
+        self.airmass = secz
         return secz
 
     def generate_transmission(self, star, detector, obs_times):
-        secz = self.airmass(star, detector, obs_times)
+        '''
+        Generate the telluric transmission spectra for the observation times.
+        Parameters
+        ----------
+        star : Star object
+            The star being observed.
+        detector : Detector object
+            The detector being used.
+        obs_times : array-like
+            The observation times.
+        Returns
+        -------
+        flux : array-like
+            The telluric transmission spectra.
+        wave : array-like
+            The wavelength grid for the telluric transmission spectra.
+        '''
+        secz = self.get_airmass(star, detector, obs_times)
         # singlerun = self.epoches is None
         if self.epoches != obs_times.shape[0]:
             logging.warning("tellurics epoches not the same as obs times\nresetting...")

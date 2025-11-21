@@ -312,7 +312,7 @@ class PhoenixModel(TheoryModel):
         P = detector.through_put * (
             detector.area
             / (const.hbar * const.c)
-            * np.einsum("ij,j,j->ij", flux,wave_diff.append(wave_diff[-1]), wave_grid)
+            * np.einsum("ij,j,j->ij", flux,np.concate(wave_diff,[wave_diff[-1]]), wave_grid)
         ).to(1 / u.min)
         return P
 
@@ -329,14 +329,16 @@ class PhoenixModel(TheoryModel):
             self.wave, method="Morton2000", co2=None
         )
         obs_flux = self.surface_flux * (self.stellar_radius**2 / self.distance**2).to(1)
-        obs_photon = self.energy_to_photon_pow(detector, obs_flux, wave_grid_air)
         print(
             "obs     flux: mean {:3.2e}\t median {:3.2e}".format(
                 np.mean(obs_flux), np.median(obs_flux)
             )
         )
         # this is where you enter stellar variability into the spectra
-        obs_photon = np.outer(np.ones(obs_times.shape), obs_photon)
+        obs_flux = np.outer(np.ones(obs_times.shape), obs_flux)
+
+        obs_photon = self.energy_to_photon_pow(detector, obs_flux, wave_grid_air)
+
         # obs_flux = stellar_to_detector_flux(self,detector,exp_times)
 
         return obs_photon, wave_grid_air

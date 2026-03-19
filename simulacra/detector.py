@@ -24,7 +24,15 @@ import simulacra.star
 from itertools import repeat
 from multiprocessing import Pool
 
-PRNG_KEY = jax.random.PRNGKey(1010101)
+
+# Do this:
+_PRNG_KEY = None
+
+def get_prng_key():
+    global _PRNG_KEY
+    if _PRNG_KEY is None:
+        _PRNG_KEY = jax.random.PRNGKey(1010101)
+    return _PRNG_KEY
 
 
 def dict_of_attr(data, obj):
@@ -639,7 +647,7 @@ class Detector:
         snr (np.ndarray) [float] signal to noise ratio
         """
 
-        return f + jax.random.normal(PRNG_KEY, shape=f.shape, dtype=f.dtype) * err
+        return f + jax.random.normal(get_prng_key(), shape=f.shape, dtype=f.dtype) * err
 
     def generate_errors(self, f, snr):
         """
